@@ -17,6 +17,7 @@
     --green: #4ade80; --green-dim: rgba(34,197,94,0.18);
     --red: #f87171; --red-dim: rgba(239,68,68,0.18);
     --accent: #6366f1; --accent-dim: rgba(99,102,241,0.15); --accent-text: #a5b4fc;
+    --yellow: #facc15; --yellow-dim: rgba(250,204,21,0.15);
     --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
     --font-display: 'Space Grotesk', -apple-system, sans-serif;
     --safe-top: env(safe-area-inset-top, 0px);
@@ -67,6 +68,8 @@
   .nav-month{font-family:var(--font-display);font-size:16px;font-weight:600;min-width:120px;text-align:center}
   .today-btn{background:var(--accent-dim);border:1px solid rgba(99,102,241,0.3);border-radius:6px;color:var(--accent-text);padding:6px 14px;cursor:pointer;font-size:11px;font-weight:600;font-family:var(--font-display);letter-spacing:1px;transition:background .15s}
   .today-btn:hover,.today-btn:active{background:rgba(99,102,241,0.25)}
+  .import-btn{background:var(--yellow-dim);border:1px solid rgba(250,204,21,0.3);border-radius:6px;color:var(--yellow);padding:6px 14px;cursor:pointer;font-size:11px;font-weight:600;font-family:var(--font-display);letter-spacing:1px;transition:background .15s}
+  .import-btn:hover,.import-btn:active{background:rgba(250,204,21,0.25)}
 
   .day-headers{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px}
   .day-header{text-align:center;padding:6px 0;font-size:10px;color:var(--text-dim);font-weight:600;letter-spacing:2px;font-family:var(--font-display)}
@@ -106,6 +109,7 @@
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:flex-end;justify-content:center;z-index:100;backdrop-filter:blur(4px);animation:fadeIn .15s}
   @media(min-width:640px){.modal-overlay{align-items:center}}
   .modal-box{background:var(--surface);border:1px solid #1e293b;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:440px;max-height:85vh;overflow-y:auto;animation:slideUp .2s;padding-bottom:calc(20px + var(--safe-bottom))}
+  .modal-box.wide{max-width:600px}
   @media(min-width:640px){.modal-box{border-radius:12px;padding-bottom:20px}}
   .modal-handle{width:36px;height:4px;background:#334155;border-radius:2px;margin:0 auto 16px}
   @media(min-width:640px){.modal-handle{display:none}}
@@ -117,7 +121,7 @@
   .trade-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;margin-bottom:4px;border:1px solid var(--border);transition:background .1s}
   .trade-item:active{background:rgba(255,255,255,0.04)}
   .trade-bar{width:3px;height:22px;border-radius:2px;margin-right:10px;flex-shrink:0}
-  .trade-bar.green{background:var(--green)}.trade-bar.red{background:var(--red)}
+  .trade-bar.green{background:var(--green)}.trade-bar.red{background:var(--red)}.trade-bar.yellow{background:var(--yellow)}
   .trade-pnl{font-size:14px;font-weight:600}
   .trade-note{font-size:10px;color:var(--text-muted);margin-top:2px}
   .trade-actions{display:flex;gap:6px}
@@ -128,10 +132,29 @@
   .form-label{font-size:10px;color:var(--text-dim);margin-bottom:4px}
   .form-input{width:100%;background:rgba(0,0,0,0.4);border:1px solid #1e293b;border-radius:6px;padding:10px;color:var(--text);font-size:15px;font-family:var(--font-mono)}
   .form-input:focus{outline:none;border-color:var(--accent)}.form-input::placeholder{color:#334155}
+  .form-textarea{width:100%;background:rgba(0,0,0,0.4);border:1px solid #1e293b;border-radius:6px;padding:10px;color:var(--text);font-size:12px;font-family:var(--font-mono);resize:vertical;min-height:120px;line-height:1.4}
+  .form-textarea:focus{outline:none;border-color:var(--accent)}.form-textarea::placeholder{color:#334155}
   .btn-submit{flex:1;background:var(--accent-dim);border:1px solid rgba(99,102,241,0.4);border-radius:6px;color:var(--accent-text);padding:10px 0;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-display);letter-spacing:.5px;transition:background .15s}
   .btn-submit:active{background:rgba(99,102,241,0.3)}
   .btn-cancel{background:rgba(255,255,255,0.05);border:1px solid #1e293b;border-radius:6px;color:var(--text-muted);padding:10px 16px;font-size:13px;cursor:pointer}
   .btn-row{display:flex;gap:8px;margin-top:10px}
+
+  .import-preview{max-height:300px;overflow-y:auto;margin:12px 0}
+  .import-date-group{margin-bottom:12px}
+  .import-date-header{font-size:11px;font-weight:600;color:var(--accent-text);margin-bottom:6px;font-family:var(--font-display)}
+  .import-entry{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:4px;margin-bottom:2px;font-size:11px;border:1px solid var(--border)}
+  .import-entry .type-badge{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;font-family:var(--font-display);letter-spacing:.5px;flex-shrink:0}
+  .type-win{background:var(--green-dim);color:var(--green)}
+  .type-loss{background:var(--red-dim);color:var(--red)}
+  .type-placed{background:var(--yellow-dim);color:var(--yellow)}
+  .type-cashout{background:rgba(96,165,250,0.15);color:#60a5fa}
+  .type-gameplay{background:rgba(168,85,247,0.15);color:#a855f7}
+  .import-desc{flex:1;margin:0 8px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .import-pnl{font-weight:600;flex-shrink:0}
+  .import-summary{display:flex;justify-content:space-between;padding:10px 12px;background:rgba(0,0,0,0.3);border-radius:8px;margin:12px 0;font-size:12px}
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .filter-chip{font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:var(--font-display);border:1px solid var(--border);background:transparent;color:var(--text-muted);transition:all .15s}
+  .filter-chip.active{background:var(--accent-dim);border-color:rgba(99,102,241,0.4);color:var(--accent-text)}
 
   @keyframes fadeIn{from{opacity:0}to{opacity:1}}
   @keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
@@ -149,9 +172,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
-// ============================================================
-//  FIREBASE CONFIG — PASTE YOUR VALUES HERE
-// ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDyAKTUFIlC8kVlHOYzIraduVDUo0_WeEE",
   authDomain: "pnl2-1d0b1.firebaseapp.com",
@@ -160,7 +180,6 @@ const firebaseConfig = {
   messagingSenderId: "911009413367",
   appId: "1:911009413367:web:716c22dd4be4c049e93bf2"
 };
-// ============================================================
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -169,6 +188,7 @@ async function hashCode(s){const b=await crypto.subtle.digest('SHA-256',new Text
 
 const{useState,useEffect,useCallback,useRef,createElement:h}=React;
 const MO=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MO_SHORT={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
 const DS=["Su","Mo","Tu","We","Th","Fr","Sa"];
 const SK="pnl_sync_code";
 
@@ -179,6 +199,91 @@ function fmt(v){const s=Math.abs(v).toLocaleString('en-US',{minimumFractionDigit
 function cls(v){return v>0?'green':v<0?'red':''}
 function cbg(v,mx){const a=0.08+0.28*(Math.abs(v)/(mx||1));return v>0?`rgba(34,197,94,${a})`:v<0?`rgba(239,68,68,${a})`:'transparent'}
 
+// ============================================================
+//  BOVADA PARSER
+// ============================================================
+function parseBovada(text){
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  const dateRe=/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}/;
+  const entries=[];
+  let cur=null;
+  for(const line of lines){
+    if(dateRe.test(line)){
+      if(cur)entries.push(cur);
+      cur={dateLine:line,lines:[]};
+    } else if(cur){
+      cur.lines.push(line);
+    }
+  }
+  if(cur)entries.push(cur);
+
+  const results=[];
+  for(const entry of entries){
+    const dm=entry.dateLine.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})/);
+    if(!dm)continue;
+    const mo=MO_SHORT[dm[1]],day=parseInt(dm[2]),yr=parseInt(dm[3]);
+    const dateKey=dk(yr,mo,day);
+    const dateLabel=`${dm[1]} ${dm[2]}, ${dm[3]}`;
+
+    const tl=(entry.lines[0]||'').toLowerCase();
+    let type='unknown',typeLabel='';
+
+    if(/deposit/i.test(tl)){type='deposit';typeLabel='Deposit'}
+    else if(/bonus/i.test(tl)){type='bonus';typeLabel='Bonus'}
+    else if(/point balance/i.test(tl)){type='adjustment';typeLabel='Adjustment'}
+    else if(/placed/i.test(tl)){type='placed';typeLabel='Placed'}
+    else if(/cash\s?out/i.test(tl)){type='cashout';typeLabel='Cash Out'}
+    else if(/win/i.test(tl)&&!/loss/i.test(tl)){type='win';typeLabel='Win'}
+    else if(/loss/i.test(tl)){type='loss';typeLabel='Loss'}
+    else if(/gameplay/i.test(tl)){type='gameplay';typeLabel='Casino'}
+    else{type='other';typeLabel='Other'}
+
+    // Extract P&L from last line containing $
+    let pnl=0;
+    for(let i=entry.lines.length-1;i>=0;i--){
+      const m=entry.lines[i].match(/^([+-]?\$[\d,]+\.?\d*)/);
+      if(m){
+        pnl=parseFloat(m[1].replace(/[$,]/g,''));
+        break;
+      }
+    }
+
+    // Build description
+    let desc=entry.lines[0]||'';
+    // Clean up the type prefix
+    desc=desc.replace(/^(Single|2 Team Parlay|3 Picks Same Game Parlay \+?|Parlay|Gameplay|Deposit|Bonus Completed)/i,'').trim();
+    desc=desc.replace(/^(Win|Loss|Placed|Cash Out)/i,'').trim();
+    desc=desc.replace(/^To Win \$[\d.]+/i,'').trim();
+    // Get matchup from subsequent lines
+    const matchups=[];
+    for(let i=1;i<entry.lines.length;i++){
+      if(/\bvs\b/i.test(entry.lines[i]) || /\b@\b/.test(entry.lines[i])){
+        let mu=entry.lines[i].replace(/\(\d+\)\s*/g,'').trim();
+        matchups.push(mu);
+      }
+    }
+    let note=desc;
+    if(matchups.length)note+=(note?' | ':'')+matchups.join(', ');
+    if(!note)note=entry.lines[0]||'';
+    // Clean up parlay prefix in note
+    note=note.replace(/^(Win|Loss|No Result)\s*/,'').trim();
+    if(note.length>80)note=note.slice(0,77)+'...';
+
+    // Bet type prefix
+    const fl=entry.lines[0]||'';
+    let betType='';
+    if(/parlay/i.test(fl))betType='Parlay';
+    else if(/single/i.test(fl))betType='Single';
+    else if(/gameplay/i.test(fl))betType='Casino';
+
+    results.push({dateKey,dateLabel,type,typeLabel,betType,pnl,note,raw:entry.lines.join(' ')});
+  }
+  return results;
+}
+
+// ============================================================
+//  SETUP SCREEN
+// ============================================================
 function SetupScreen({onConnect}){
   const[code,setCode]=useState('');const[ld,setLd]=useState(false);const sv=localStorage.getItem(SK);
   useEffect(()=>{if(sv){setLd(true);onConnect(sv)}},[]);
@@ -194,12 +299,108 @@ function SetupScreen({onConnect}){
   ]));
 }
 
+// ============================================================
+//  IMPORT MODAL
+// ============================================================
+function ImportModal({onClose,onImport}){
+  const[raw,setRaw]=useState('');
+  const[parsed,setParsed]=useState(null);
+  const[filters,setFilters]=useState({win:true,loss:true,placed:true,cashout:true,gameplay:true});
+
+  const doParse=()=>{const r=parseBovada(raw);setParsed(r)};
+
+  const filtered=(parsed||[]).filter(e=>{
+    if(e.type==='deposit'||e.type==='bonus'||e.type==='adjustment')return false;
+    if(e.type==='win'&&!filters.win)return false;
+    if(e.type==='loss'&&!filters.loss)return false;
+    if(e.type==='placed'&&!filters.placed)return false;
+    if(e.type==='cashout'&&!filters.cashout)return false;
+    if(e.type==='gameplay'&&!filters.gameplay)return false;
+    if(e.type==='other')return true;
+    return true;
+  });
+
+  const totalPnl=filtered.reduce((s,e)=>s+e.pnl,0);
+
+  // Group by date
+  const grouped={};
+  filtered.forEach(e=>{if(!grouped[e.dateKey])grouped[e.dateKey]={label:e.dateLabel,entries:[]};grouped[e.dateKey].entries.push(e)});
+  const sortedDates=Object.keys(grouped).sort().reverse();
+
+  const doImport=()=>{
+    const byDate={};
+    filtered.forEach(e=>{
+      if(!byDate[e.dateKey])byDate[e.dateKey]=[];
+      const prefix=[e.typeLabel,e.betType].filter(Boolean).join(' ');
+      byDate[e.dateKey].push({pnl:e.pnl,note:prefix+(e.note?' - '+e.note:'')});
+    });
+    onImport(byDate);
+  };
+
+  const toggleFilter=k=>setFilters(f=>({...f,[k]:!f[k]}));
+  const typeCls=t=>t==='win'?'type-win':t==='loss'?'type-loss':t==='placed'?'type-placed':t==='cashout'?'type-cashout':t==='gameplay'?'type-gameplay':'';
+
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal-box wide',onClick:e=>e.stopPropagation()},[
+      h('div',{className:'modal-handle',key:'handle'}),
+      h('div',{className:'modal-header',key:'hdr'},[
+        h('div',{key:'l'},h('div',{className:'modal-title'},'Import from Bovada')),
+        h('button',{className:'modal-close',onClick:onClose,key:'x'},'✕'),
+      ]),
+
+      !parsed && h('div',{key:'input'},[
+        h('div',{className:'section-label',key:'l'},'PASTE YOUR BET HISTORY'),
+        h('textarea',{className:'form-textarea',key:'ta',value:raw,onChange:e=>setRaw(e.target.value),
+          placeholder:'Go to Bovada → Account → History\nSelect and copy your bet history, then paste here...',
+          rows:8,style:{minHeight:150}}),
+        h('div',{className:'btn-row',key:'btns'},
+          h('button',{className:'btn-submit',onClick:doParse,disabled:!raw.trim()},'Parse Data')),
+      ]),
+
+      parsed && h('div',{key:'preview'},[
+        h('div',{className:'filter-row',key:'filters'},[
+          h('button',{className:`filter-chip ${filters.win?'active':''}`,onClick:()=>toggleFilter('win'),key:'w'},'Wins'),
+          h('button',{className:`filter-chip ${filters.loss?'active':''}`,onClick:()=>toggleFilter('loss'),key:'l'},'Losses'),
+          h('button',{className:`filter-chip ${filters.placed?'active':''}`,onClick:()=>toggleFilter('placed'),key:'p'},'Placed'),
+          h('button',{className:`filter-chip ${filters.cashout?'active':''}`,onClick:()=>toggleFilter('cashout'),key:'c'},'Cash Out'),
+          h('button',{className:`filter-chip ${filters.gameplay?'active':''}`,onClick:()=>toggleFilter('gameplay'),key:'g'},'Casino'),
+        ]),
+
+        h('div',{className:'import-summary',key:'summary'},[
+          h('span',{key:'c'},`${filtered.length} entries`),
+          h('span',{key:'p',style:{fontWeight:700,color:totalPnl>=0?'#4ade80':'#f87171'}},`Net: ${fmt(totalPnl)}`),
+        ]),
+
+        h('div',{className:'import-preview',key:'list'},
+          sortedDates.map(dk2=>h('div',{className:'import-date-group',key:dk2},[
+            h('div',{className:'import-date-header',key:'h'},grouped[dk2].label+' ('+grouped[dk2].entries.length+' entries)'),
+            ...grouped[dk2].entries.map((e,i)=>h('div',{className:'import-entry',key:i},[
+              h('span',{className:`type-badge ${typeCls(e.type)}`,key:'t'},e.typeLabel),
+              h('span',{className:'import-desc',key:'d'},e.note),
+              h('span',{className:`import-pnl ${cls(e.pnl)}`,key:'p'},fmt(e.pnl)),
+            ]))
+          ]))
+        ),
+
+        h('div',{className:'btn-row',key:'btns'},[
+          h('button',{className:'btn-submit',onClick:doImport,key:'i'},`Import ${filtered.length} Entries`),
+          h('button',{className:'btn-cancel',onClick:()=>setParsed(null),key:'b'},'Back'),
+        ]),
+      ]),
+    ])
+  );
+}
+
+// ============================================================
+//  DASHBOARD
+// ============================================================
 function Dashboard({syncCode,onLogout}){
   const now=new Date();
   const[year,setYear]=useState(now.getFullYear());
   const[month,setMonth]=useState(now.getMonth());
   const[trades,setTrades]=useState({});
   const[modal,setModal]=useState(null);
+  const[importModal,setImportModal]=useState(false);
   const[form,setForm]=useState({pnl:'',note:''});
   const[editIdx,setEditIdx]=useState(null);
   const[ss,setSs]=useState('saving');
@@ -238,6 +439,16 @@ function Dashboard({syncCode,onLogout}){
   const delTrade=i=>{const key=dk(modal.y,modal.m,modal.d);const up={...trades};up[key]=up[key].filter((_,j)=>j!==i);if(!up[key].length)delete up[key];persist(up)};
   const editTr=i=>{const key=dk(modal.y,modal.m,modal.d);const t=trades[key][i];setForm({pnl:String(t.pnl),note:t.note||''});setEditIdx(i)};
 
+  const handleImport=byDate=>{
+    const up={...trades};
+    Object.entries(byDate).forEach(([key,newTrades])=>{
+      if(!up[key])up[key]=[];
+      up[key]=[...up[key],...newTrades];
+    });
+    persist(up);
+    setImportModal(false);
+  };
+
   const mT=modal?(trades[dk(modal.y,modal.m,modal.d)]||[]):[];
   const mP=mT.reduce((s,t)=>s+t.pnl,0);
   const isTd=d=>d===now.getDate()&&month===now.getMonth()&&year===now.getFullYear();
@@ -258,7 +469,10 @@ function Dashboard({syncCode,onLogout}){
     ]),
     h('div',{className:'nav',key:'nav'},[
       h('div',{className:'nav-group',key:'g'},h('button',{className:'nav-btn',onClick:pv,key:'p'},'‹'),h('span',{className:'nav-month',key:'m'},`${MO[month].slice(0,3)} ${year}`),h('button',{className:'nav-btn',onClick:nx,key:'n'},'›')),
-      h('button',{className:'today-btn',onClick:gt,key:'t'},'TODAY'),
+      h('div',{style:{display:'flex',gap:6},key:'r'},[
+        h('button',{className:'import-btn',onClick:()=>setImportModal(true),key:'i'},'IMPORT'),
+        h('button',{className:'today-btn',onClick:gt,key:'t'},'TODAY'),
+      ]),
     ]),
     h('div',{className:'day-headers',key:'dh'},DS.map(d=>h('div',{className:'day-header',key:d},d))),
 
@@ -281,6 +495,7 @@ function Dashboard({syncCode,onLogout}){
       h('div',{className:'stat-card',key:'wd'},[h('div',{className:'stat-label',key:'l'},'WORST DAY'),h('div',{className:`stat-value ${cls(wrd)}`,key:'v'},mt?fmt(wrd):'—')]),
     ]),
 
+    // Day modal
     modal&&h('div',{className:'modal-overlay',key:'modal',onClick:()=>setModal(null)},h('div',{className:'modal-box',onClick:e=>e.stopPropagation()},[
       h('div',{className:'modal-handle',key:'h'}),
       h('div',{className:'modal-header',key:'hdr'},[
@@ -303,6 +518,9 @@ function Dashboard({syncCode,onLogout}){
           editIdx!==null&&h('button',{className:'btn-cancel',onClick:()=>{setEditIdx(null);setForm({pnl:'',note:''})},key:'c'},'Cancel')]),
       ]),
     ])),
+
+    // Import modal
+    importModal&&h(ImportModal,{key:'import',onClose:()=>setImportModal(false),onImport:handleImport}),
   ]);
 }
 
