@@ -360,39 +360,10 @@ function SetupScreen({onConnect}){
 function ImportModal({onClose,onImport}){
   const[raw,setRaw]=useState('');
   const[parsed,setParsed]=useState(null);
-  const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true});
+  const[filters,setFilters]=useState({win:true,loss:true,placed:true,cashout:true,gameplay:true});
 
   const doParse=()=>{
     const r=parseBovada(raw);
-    // Post-process: for Loss entries with pnl=0, try to find matching Placed entry stake
-    // Match by similar selection/matchup text
-    const placedEntries=r.filter(e=>e.type==='placed');
-    r.forEach(e=>{
-      if(e.type==='loss'&&e.pnl===0){
-        // Try to find a placed entry with overlapping matchup
-        const myMatchups=(e.note||'').toLowerCase();
-        for(const p of placedEntries){
-          const pMatch=(p.note||'').toLowerCase();
-          // Check if they share a matchup
-          if(myMatchups&&pMatch&&(myMatchups.includes(pMatch.split('|')[0].trim())||pMatch.includes(myMatchups.split('|')[0].trim()))){
-            e.pnl=p.pnl; // Use the placed stake as the loss (already negative)
-            break;
-          }
-        }
-        // If still 0, check for matching selection keywords
-        if(e.pnl===0){
-          const words=myMatchups.split(/[\s|,]+/).filter(w=>w.length>3);
-          for(const p of placedEntries){
-            const pw=(p.note||'').toLowerCase();
-            const matchCount=words.filter(w=>pw.includes(w)).length;
-            if(matchCount>=2){
-              e.pnl=p.pnl;
-              break;
-            }
-          }
-        }
-      }
-    });
     setParsed(r);
   };
 
@@ -419,7 +390,7 @@ function ImportModal({onClose,onImport}){
     filtered.forEach(e=>{
       if(!byDate[e.dateKey])byDate[e.dateKey]=[];
       const prefix=[e.typeLabel,e.betType].filter(Boolean).join(' ');
-      byDate[e.dateKey].push({pnl:e.pnl,note:prefix+(e.note?' - '+e.note:'')});
+      byDate[e.dateKey].push({pnl:e.pnl,note:prefix+(e.note?' - '+e.note:''),hidden:e.type==='placed'||e.type==='loss'&&e.pnl===0});
     });
     onImport(byDate);
   };
@@ -512,7 +483,7 @@ function Dashboard({syncCode,onLogout}){
   const rm=7-cells.length%7;if(rm<7)for(let i=1;i<=rm;i++)cells.push({d:i,cur:false});
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
 
-  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.length}}
+  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.filter(x=>!x.hidden).length,total:t.length}}
   function wS(wk){let p=0,n=0;wk.forEach(c=>{if(c.cur){const s=dS(c.d);p+=s.pnl;n+=s.n}});return{pnl:p,n}}
 
   let mp=0,mt=0,mx=0;for(let d=1;d<=nd;d++){const s=dS(d);mp+=s.pnl;mt+=s.n;if(Math.abs(s.pnl)>mx)mx=Math.abs(s.pnl)}
@@ -572,11 +543,11 @@ function Dashboard({syncCode,onLogout}){
 
     ...weeks.map((wk,wi)=>{const hc=wk.some(c=>c.cur);if(hc)wn++;const ws=wS(wk);const cw=wn;
       return h('div',{className:'week-row',key:'w'+wi},[
-        ...wk.map((c,ci)=>{const s=c.cur?dS(c.d):{pnl:0,n:0};const has=s.n>0;const td=c.cur&&isTd(c.d);
+        ...wk.map((c,ci)=>{const s=c.cur?dS(c.d):{pnl:0,n:0,total:0};const has=s.total>0;const td=c.cur&&isTd(c.d);
           return h('div',{className:`cal-cell ${!c.cur?'inactive':''} ${td?'today':''}`,key:'c'+ci,onClick:()=>c.cur&&openDay(c.d),style:{background:has?cbg(s.pnl,mx):undefined}},[
             h('div',{className:`cell-day ${td?'today-text':''}`,key:'d'},td?[h('span',{className:'today-dot',key:'dot'}),c.d]:c.d),
             has&&c.cur&&h('div',{className:`cell-pnl ${cls(s.pnl)}`,key:'p'},fmt(s.pnl)),
-            has&&c.cur&&h('div',{className:'cell-trades',key:'t'},`${s.n} trade${s.n!==1?'s':''}`)])}),
+            has&&c.cur&&s.n>0&&h('div',{className:'cell-trades',key:'t'},`${s.n} trade${s.n!==1?'s':''}`)])}),
         h('div',{className:'week-col',key:'ws'},hc?[h('div',{className:'week-label',key:'l'},`Wk ${cw}`),h('div',{className:`week-pnl ${cls(ws.pnl)}`,key:'p'},fmt(ws.pnl)),ws.n>0&&h('div',{className:'week-trades',key:'t'},`${ws.n} trades`)]:null),
       ])}),
 
@@ -598,7 +569,7 @@ function Dashboard({syncCode,onLogout}){
       ]),
       mT.length>0&&h('div',{key:'trades',style:{marginBottom:12}},[
         h('div',{className:'section-label',key:'l'},'TRADES'),
-        ...mT.map((t,i)=>h('div',{className:'trade-item',key:'t'+i},[
+        ...mT.map((t,i)=>h('div',{className:'trade-item',key:'t'+i,style:t.hidden?{opacity:0.4}:{}},[
           h('div',{style:{display:'flex',alignItems:'center'},key:'l'},[h('div',{className:`trade-bar ${cls(t.pnl)}`,key:'b'}),h('div',{key:'i'},[h('div',{className:`trade-pnl ${cls(t.pnl)}`,key:'p'},fmt(t.pnl)),t.note&&h('div',{className:'trade-note',key:'n'},t.note)])]),
           h('div',{className:'trade-actions',key:'a'},[h('button',{className:'btn-edit',onClick:()=>editTr(i),key:'e'},'Edit'),h('button',{className:'btn-del',onClick:()=>delTrade(i),key:'d'},'×')]),
         ]))]),
