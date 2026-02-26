@@ -203,11 +203,15 @@ function cbg(v,mx){const a=0.08+0.28*(Math.abs(v)/(mx||1));return v>0?`rgba(34,1
 //  BOVADA PARSER
 // ============================================================
 function parseBovada(text){
+  // Normalize: replace tabs with newlines, collapse whitespace
+  text=text.replace(/\t/g,'\n').replace(/\r/g,'');
   const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
   const dateRe=/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}/;
   const entries=[];
   let cur=null;
   for(const line of lines){
+    // Skip pure time lines
+    if(/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(line))continue;
     if(dateRe.test(line)){
       if(cur)entries.push(cur);
       cur={dateLine:line,lines:[]};
@@ -225,38 +229,51 @@ function parseBovada(text){
     const dateKey=dk(yr,mo,day);
     const dateLabel=`${dm[1]} ${dm[2]}, ${dm[3]}`;
 
-    const fl=(entry.lines[0]||'');
-    const flLow=fl.toLowerCase();
-    // If first line is just a time (e.g. "05:00 PM"), skip it
-    let contentStart=0;
-    if(/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(fl.trim())){contentStart=1}
-    const betLine=(entry.lines[contentStart]||'');
-    const blLow=betLine.toLowerCase();
+    // Join ALL lines into one blob for detection (handles table copies where keywords are on separate lines)
+    const blob=entry.lines.join(' ');
+    const blobLow=blob.toLowerCase();
+
     let type='other',typeLabel='Other',betType='';
 
-    // Detect status - handles concatenated words like SingleWin, 2 Team ParlayLoss
-    if(/deposit/i.test(blLow)){type='deposit';typeLabel='Deposit'}
-    else if(/bonus/i.test(blLow)){type='bonus';typeLabel='Bonus'}
-    else if(/point balance/i.test(blLow)){type='adjustment';typeLabel='Adjustment'}
-    else if(/cash\s?out/i.test(blLow)){type='cashout';typeLabel='Cash Out'}
-    else if(/placed/i.test(blLow)){type='placed';typeLabel='Placed'}
-    else if(/win/i.test(blLow)&&!/loss/i.test(blLow)){type='win';typeLabel='Win'}
-    else if(/loss/i.test(blLow)){type='loss';typeLabel='Loss'}
-    else if(/gameplay/i.test(blLow)){type='gameplay';typeLabel='Casino'}
+    // Detect status — check the entire blob
+    // Order matters: check specific things first
+    if(/deposit/i.test(blobLow)){type='deposit';typeLabel='Deposit'}
+    else if(/bonus/i.test(blobLow)){type='bonus';typeLabel='Bonus'}
+    else if(/point balance/i.test(blobLow)){type='adjustment';typeLabel='Adjustment'}
+    else if(/\bplaced\b/i.test(blobLow)||/to win \$/i.test(blobLow)){type='placed';typeLabel='Placed'}
+    else if(/cash\s?out/i.test(blobLow)){type='cashout';typeLabel='Cash Out'}
+    else if(/gameplay/i.test(blobLow)){type='gameplay';typeLabel='Casino'}
+    else {
+      // For win/loss, look for standalone keywords or as part of concatenated words
+      // Count wins vs losses — some lines have both "Win" and "Loss" in parlays
+      // Use the STATUS keyword (usually appears right after bet type or as a separate line)
+      let hasWinStatus=false,hasLossStatus=false;
+      for(const l of entry.lines){
+        const ll=l.toLowerCase();
+        // Match "Win" as standalone word OR concatenated like "SingleWin", "ParlayWin"
+        if(/\bwin\b/i.test(l)||/(?:single|parlay|parlay\s?\+?)win/i.test(l))hasWinStatus=true;
+        // Check for standalone "WIN" line (table copy often puts status on its own line)
+        if(/^win$/i.test(l.trim()))hasWinStatus=true;
+        if(/\bloss\b/i.test(l)||/(?:single|parlay|parlay\s?\+?)loss/i.test(l))hasLossStatus=true;
+        if(/^loss$/i.test(l.trim()))hasLossStatus=true;
+      }
+      // If first significant line contains the bet result
+      if(hasLossStatus){type='loss';typeLabel='Loss'}
+      else if(hasWinStatus){type='win';typeLabel='Win'}
+    }
 
-    // Detect bet structure
-    if(/parlay/i.test(blLow))betType='Parlay';
-    else if(/same game/i.test(blLow))betType='SGP';
-    else if(/single/i.test(blLow))betType='Single';
-    else if(/gameplay/i.test(blLow))betType='Casino';
+    // Detect bet structure from blob
+    if(/parlay/i.test(blobLow))betType='Parlay';
+    else if(/same game/i.test(blobLow))betType='SGP';
+    else if(/\bsingle\b/i.test(blobLow)||/^single/i.test(entry.lines[0]||''))betType='Single';
+    else if(/gameplay/i.test(blobLow))betType='Casino';
 
-    // Extract P&L — Bovada format: last $-line is like "+$23.51$107.13" or "$0.00$47.86" or "-$5.00$32.45"
-    // First $ amount = P&L, second = running balance
+    // Extract P&L — look for $-prefixed amounts
     let pnl=0;
     for(let i=entry.lines.length-1;i>=0;i--){
       const line=entry.lines[i];
       // Pattern: +$XX.XX$balance or -$XX.XX$balance or $0.00$balance
-      const m=line.match(/^([+-])?\$([\d,]+\.?\d*)\$/);
+      const m=line.match(/^([+-])?\$([\d,]+\.?\d*)\$([\d,]+\.?\d*)/);
       if(m){
         const val=parseFloat(m[2].replace(/,/g,''));
         if(m[1]==='-')pnl=-val;
@@ -264,32 +281,57 @@ function parseBovada(text){
         else pnl=0;
         break;
       }
-      // Fallback: +$amount or -$amount at start
-      const m2=line.match(/^([+-])\$([\d,]+\.?\d*)/);
+      // Pattern: +$XX.XX or -$XX.XX standalone
+      const m2=line.match(/^([+-])\$([\d,]+\.?\d*)$/);
       if(m2){
         const val=parseFloat(m2[2].replace(/,/g,''));
         pnl=m2[1]==='-'?-val:val;
         break;
       }
-    }
-
-    // Build description from selection + matchups
-    let selLine=betLine.replace(/^(Single|\d+ Team Parlay|\d+ Picks? Same Game Parlay\s?\+?|Parlay|Gameplay|Deposit|Bonus Completed)/i,'');
-    selLine=selLine.replace(/^(Win|Loss|Placed|Cash\s?Out)/i,'').trim();
-    selLine=selLine.replace(/^To Win \$[\d.,]+/i,'').trim();
-    const matchups=[];
-    for(let i=contentStart+1;i<entry.lines.length;i++){
-      if(/\bvs\b/i.test(entry.lines[i])||/\b@\b/.test(entry.lines[i])){
-        matchups.push(entry.lines[i].replace(/\(\d+\)\s*/g,'').trim());
+      // Pattern: just +$XX.XX or -$XX.XX at start of line
+      const m3=line.match(/^([+-])\$([\d,]+\.?\d*)/);
+      if(m3){
+        const val=parseFloat(m3[2].replace(/,/g,''));
+        pnl=m3[1]==='-'?-val:val;
+        break;
       }
     }
-    let note=selLine||'';
+
+    // Build description: find matchups and selection
+    const matchups=[];
+    let selection='';
+    for(const l of entry.lines){
+      // Skip pure numbers, dollar amounts, status words
+      if(/^\d+[\d,.]*$/.test(l))continue;
+      if(/^[+-]?\$/.test(l))continue;
+      if(/^(win|loss|placed|cash out|bonus|deposit|to win)$/i.test(l.trim()))continue;
+      if(/\bvs\b/i.test(l)||/\b@\b/.test(l)){
+        matchups.push(l.replace(/\(\d+\)\s*/g,'').trim());
+      } else if(!selection && /\([\-+]?\d+\)/.test(l)){
+        // Lines with odds like (+138) or (-185) are selections
+        let sel=l.replace(/^(Single|Parlay|\d+ Team Parlay|\d+ Picks? Same Game Parlay\s?\+?|Gameplay)/i,'');
+        sel=sel.replace(/^(Win|Loss|Placed|Cash\s?Out)/i,'').trim();
+        sel=sel.replace(/^To Win \$[\d.,]+/i,'').trim();
+        sel=sel.replace(/\s*(Win|Loss|No Result)\s*$/i,'').trim();
+        if(sel)selection=sel;
+      }
+    }
+    let note=selection||'';
     if(matchups.length)note+=(note?' | ':'')+matchups.join(', ');
-    if(!note)note=betLine;
+    // Fallback: use first non-numeric, non-dollar line
+    if(!note){
+      for(const l of entry.lines){
+        if(/^\d+[\d,.]*$/.test(l))continue;
+        if(/^[+-]?\$/.test(l))continue;
+        if(/^(win|loss)$/i.test(l.trim()))continue;
+        note=l;break;
+      }
+    }
+    if(!note)note=entry.lines[0]||'';
     note=note.replace(/\s*(Win|Loss|No Result)\s*$/i,'').trim();
     if(note.length>80)note=note.slice(0,77)+'...';
 
-    results.push({dateKey,dateLabel,type,typeLabel,betType,pnl,note,raw:entry.lines.join(' ')});
+    results.push({dateKey,dateLabel,type,typeLabel,betType,pnl,note,raw:blob});
   }
   return results;
 }
