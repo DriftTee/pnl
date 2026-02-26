@@ -360,49 +360,66 @@ function SetupScreen({onConnect}){
 function ImportModal({onClose,onImport}){
   const[raw,setRaw]=useState('');
   const[parsed,setParsed]=useState(null);
-  const[filters,setFilters]=useState({win:true,loss:true,placed:true,cashout:true,gameplay:true});
+  const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true});
 
   const doParse=()=>{
     const r=parseBovada(raw);
-    // Post-process: swap Placed and Loss amounts
-    // Placed: -$stake, Loss: $0. We want Loss=-$stake, Placed=$0
-    const losses=r.filter(e=>e.type==='loss'&&e.pnl===0);
+    // Match settled bets with their placed entries to compute NET P&L per bet
+    // Win: net = return - stake (profit only)
+    // Loss: net = 0 - stake = -stake (actual loss)
+    // CashOut: net = return - stake
+    const settled=r.filter(e=>e.type==='win'||e.type==='loss'||e.type==='cashout');
     const placed=r.filter(e=>e.type==='placed');
-    for(const loss of losses){
-      const lNote=(loss.note||'').toLowerCase();
-      const lWords=lNote.split(/[\s|,]+/).filter(w=>w.length>2);
-      let bestMatch=null,bestScore=0;
-      for(const p of placed){
-        if(p.pnl>=0)continue;
+    const usedPlaced=new Set();
+
+    function findPlaced(entry){
+      const eNote=(entry.note||'').toLowerCase();
+      const eWords=eNote.split(/[\s|,]+/).filter(w=>w.length>2);
+      let best=null,bestScore=0,bestIdx=-1;
+      for(let i=0;i<placed.length;i++){
+        if(usedPlaced.has(i))continue;
+        const p=placed[i];
         const pNote=(p.note||'').toLowerCase();
-        let score=lWords.filter(w=>pNote.includes(w)).length;
-        const lM=(lNote.match(/[\w\s]+ (?:vs|@) [\w\s]+/g)||[]);
+        let score=eWords.filter(w=>pNote.includes(w)).length;
+        const eM=(eNote.match(/[\w\s]+ (?:vs|@) [\w\s]+/g)||[]);
         const pM=(pNote.match(/[\w\s]+ (?:vs|@) [\w\s]+/g)||[]);
-        for(const a of lM){for(const b of pM){if(a.trim()===b.trim())score+=5}}
-        if(score>bestScore){bestScore=score;bestMatch=p}
+        for(const a of eM){for(const b of pM){if(a.trim()===b.trim())score+=5}}
+        if(score>bestScore){bestScore=score;best=p;bestIdx=i}
       }
-      if(bestMatch&&bestScore>=1){loss.pnl=bestMatch.pnl;bestMatch.pnl=0}
+      if(best&&bestScore>=1){usedPlaced.add(bestIdx);return best}
+      return null;
     }
-    // Second pass: match remaining $0 losses with remaining placed entries
-    // Match by bet type first, then closest stake amount
-    const remLosses=losses.filter(e=>e.pnl===0);
-    const remPlaced=placed.filter(e=>e.pnl<0);
-    for(const loss of remLosses){
-      if(!remPlaced.some(p=>p.pnl<0))break;
-      // Prefer same bet type
+
+    // Pass 1: keyword match
+    for(const s of settled){
+      const p=findPlaced(s);
+      if(p){
+        const stake=Math.abs(p.pnl); // stake is positive number
+        if(s.type==='win'){s.pnl=s.pnl-stake} // return - stake = profit
+        else if(s.type==='loss'){s.pnl=-stake} // lost the stake
+        else if(s.type==='cashout'){s.pnl=s.pnl-stake} // partial return - stake
+      }
+    }
+
+    // Pass 2: fallback for unmatched - pair by bet type then amount
+    const unmatched=settled.filter(s=>s.type==='loss'&&s.pnl===0);
+    const unusedPlaced=placed.filter((_,i)=>!usedPlaced.has(i));
+    for(const loss of unmatched){
+      if(!unusedPlaced.some(p=>p.pnl<0))break;
       const lType=(loss.raw||loss.note||'').toLowerCase();
       const isParlay=/parlay|sgp|same game/i.test(lType);
       let best=null,bestS=Infinity;
-      for(const p of remPlaced){
+      for(const p of unusedPlaced){
         if(p.pnl>=0)continue;
         const pType=(p.raw||p.note||'').toLowerCase();
         const pIsParlay=/parlay|sgp|same game/i.test(pType);
         let s=Math.abs(p.pnl);
-        if(isParlay===pIsParlay)s-=1000; // heavily prefer same type
+        if(isParlay===pIsParlay)s-=1000;
         if(s<bestS){bestS=s;best=p}
       }
-      if(best){loss.pnl=best.pnl;best.pnl=0}
+      if(best){loss.pnl=-Math.abs(best.pnl);best.pnl=0}
     }
+
     setParsed(r);
   };
 
@@ -522,7 +539,7 @@ function Dashboard({syncCode,onLogout}){
   const rm=7-cells.length%7;if(rm<7)for(let i=1;i<=rm;i++)cells.push({d:i,cur:false});
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
 
-  function dS(d){const t=trades[dk(year,month,d)]||[];const settled=t.filter(x=>x.type!=='placed');return{pnl:settled.reduce((s,x)=>s+x.pnl,0),n:settled.filter(x=>!(x.pnl===0&&x.type==='loss')).length,total:settled.length}}
+  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.length,total:t.length}}
   function wS(wk){let p=0,n=0;wk.forEach(c=>{if(c.cur){const s=dS(c.d);p+=s.pnl;n+=s.n}});return{pnl:p,n}}
 
   let mp=0,mt=0,mx=0;for(let d=1;d<=nd;d++){const s=dS(d);mp+=s.pnl;mt+=s.n;if(Math.abs(s.pnl)>mx)mx=Math.abs(s.pnl)}
