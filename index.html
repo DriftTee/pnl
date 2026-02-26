@@ -364,6 +364,45 @@ function ImportModal({onClose,onImport}){
 
   const doParse=()=>{
     const r=parseBovada(raw);
+    // Post-process: swap Placed and Loss amounts
+    // Placed: -$stake, Loss: $0. We want Loss=-$stake, Placed=$0
+    const losses=r.filter(e=>e.type==='loss'&&e.pnl===0);
+    const placed=r.filter(e=>e.type==='placed');
+    for(const loss of losses){
+      const lNote=(loss.note||'').toLowerCase();
+      const lWords=lNote.split(/[\s|,]+/).filter(w=>w.length>2);
+      let bestMatch=null,bestScore=0;
+      for(const p of placed){
+        if(p.pnl>=0)continue;
+        const pNote=(p.note||'').toLowerCase();
+        let score=lWords.filter(w=>pNote.includes(w)).length;
+        const lM=(lNote.match(/[\w\s]+ (?:vs|@) [\w\s]+/g)||[]);
+        const pM=(pNote.match(/[\w\s]+ (?:vs|@) [\w\s]+/g)||[]);
+        for(const a of lM){for(const b of pM){if(a.trim()===b.trim())score+=5}}
+        if(score>bestScore){bestScore=score;bestMatch=p}
+      }
+      if(bestMatch&&bestScore>=1){loss.pnl=bestMatch.pnl;bestMatch.pnl=0}
+    }
+    // Second pass: match remaining $0 losses with remaining placed entries
+    // Match by bet type first, then closest stake amount
+    const remLosses=losses.filter(e=>e.pnl===0);
+    const remPlaced=placed.filter(e=>e.pnl<0);
+    for(const loss of remLosses){
+      if(!remPlaced.some(p=>p.pnl<0))break;
+      // Prefer same bet type
+      const lType=(loss.raw||loss.note||'').toLowerCase();
+      const isParlay=/parlay|sgp|same game/i.test(lType);
+      let best=null,bestS=Infinity;
+      for(const p of remPlaced){
+        if(p.pnl>=0)continue;
+        const pType=(p.raw||p.note||'').toLowerCase();
+        const pIsParlay=/parlay|sgp|same game/i.test(pType);
+        let s=Math.abs(p.pnl);
+        if(isParlay===pIsParlay)s-=1000; // heavily prefer same type
+        if(s<bestS){bestS=s;best=p}
+      }
+      if(best){loss.pnl=best.pnl;best.pnl=0}
+    }
     setParsed(r);
   };
 
@@ -483,7 +522,7 @@ function Dashboard({syncCode,onLogout}){
   const rm=7-cells.length%7;if(rm<7)for(let i=1;i<=rm;i++)cells.push({d:i,cur:false});
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
 
-  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.filter(x=>x.type!=='placed'&&!(x.pnl===0&&x.type==='loss')).length,total:t.length}}
+  function dS(d){const t=trades[dk(year,month,d)]||[];const settled=t.filter(x=>x.type!=='placed');return{pnl:settled.reduce((s,x)=>s+x.pnl,0),n:settled.filter(x=>!(x.pnl===0&&x.type==='loss')).length,total:settled.length}}
   function wS(wk){let p=0,n=0;wk.forEach(c=>{if(c.cur){const s=dS(c.d);p+=s.pnl;n+=s.n}});return{pnl:p,n}}
 
   let mp=0,mt=0,mx=0;for(let d=1;d<=nd;d++){const s=dS(d);mp+=s.pnl;mt+=s.n;if(Math.abs(s.pnl)>mx)mx=Math.abs(s.pnl)}
