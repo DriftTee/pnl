@@ -360,9 +360,41 @@ function SetupScreen({onConnect}){
 function ImportModal({onClose,onImport}){
   const[raw,setRaw]=useState('');
   const[parsed,setParsed]=useState(null);
-  const[filters,setFilters]=useState({win:true,loss:true,placed:true,cashout:true,gameplay:true});
+  const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true});
 
-  const doParse=()=>{const r=parseBovada(raw);setParsed(r)};
+  const doParse=()=>{
+    const r=parseBovada(raw);
+    // Post-process: for Loss entries with pnl=0, try to find matching Placed entry stake
+    // Match by similar selection/matchup text
+    const placedEntries=r.filter(e=>e.type==='placed');
+    r.forEach(e=>{
+      if(e.type==='loss'&&e.pnl===0){
+        // Try to find a placed entry with overlapping matchup
+        const myMatchups=(e.note||'').toLowerCase();
+        for(const p of placedEntries){
+          const pMatch=(p.note||'').toLowerCase();
+          // Check if they share a matchup
+          if(myMatchups&&pMatch&&(myMatchups.includes(pMatch.split('|')[0].trim())||pMatch.includes(myMatchups.split('|')[0].trim()))){
+            e.pnl=p.pnl; // Use the placed stake as the loss (already negative)
+            break;
+          }
+        }
+        // If still 0, check for matching selection keywords
+        if(e.pnl===0){
+          const words=myMatchups.split(/[\s|,]+/).filter(w=>w.length>3);
+          for(const p of placedEntries){
+            const pw=(p.note||'').toLowerCase();
+            const matchCount=words.filter(w=>pw.includes(w)).length;
+            if(matchCount>=2){
+              e.pnl=p.pnl;
+              break;
+            }
+          }
+        }
+      }
+    });
+    setParsed(r);
+  };
 
   const filtered=(parsed||[]).filter(e=>{
     if(e.type==='deposit'||e.type==='bonus'||e.type==='adjustment')return false;
@@ -504,6 +536,12 @@ function Dashboard({syncCode,onLogout}){
     setImportModal(false);
   };
 
+  const clearAllTrades=()=>{
+    if(confirm('Delete ALL trades? This cannot be undone.')){
+      persist({});
+    }
+  };
+
   const mT=modal?(trades[dk(modal.y,modal.m,modal.d)]||[]):[];
   const mP=mT.reduce((s,t)=>s+t.pnl,0);
   const isTd=d=>d===now.getDate()&&month===now.getMonth()&&year===now.getFullYear();
@@ -527,6 +565,7 @@ function Dashboard({syncCode,onLogout}){
       h('div',{style:{display:'flex',gap:6},key:'r'},[
         h('button',{className:'import-btn',onClick:()=>setImportModal(true),key:'i'},'IMPORT'),
         h('button',{className:'today-btn',onClick:gt,key:'t'},'TODAY'),
+        mt>0&&h('button',{onClick:clearAllTrades,key:'cl',style:{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:6,color:'#f87171',padding:'6px 10px',cursor:'pointer',fontSize:11,fontWeight:600,fontFamily:"'Space Grotesk', sans-serif",letterSpacing:1}},'CLEAR'),
       ]),
     ]),
     h('div',{className:'day-headers',key:'dh'},DS.map(d=>h('div',{className:'day-header',key:d},d))),
