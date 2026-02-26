@@ -390,7 +390,7 @@ function ImportModal({onClose,onImport}){
     filtered.forEach(e=>{
       if(!byDate[e.dateKey])byDate[e.dateKey]=[];
       const prefix=[e.typeLabel,e.betType].filter(Boolean).join(' ');
-      byDate[e.dateKey].push({pnl:e.pnl,note:prefix+(e.note?' - '+e.note:''),hidden:e.type==='placed'||e.type==='loss'&&e.pnl===0});
+      byDate[e.dateKey].push({pnl:e.pnl,note:prefix+(e.note?' - '+e.note:''),type:e.type});
     });
     onImport(byDate);
   };
@@ -483,7 +483,7 @@ function Dashboard({syncCode,onLogout}){
   const rm=7-cells.length%7;if(rm<7)for(let i=1;i<=rm;i++)cells.push({d:i,cur:false});
   const weeks=[];for(let i=0;i<cells.length;i+=7)weeks.push(cells.slice(i,i+7));
 
-  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.filter(x=>!x.hidden).length,total:t.length}}
+  function dS(d){const t=trades[dk(year,month,d)]||[];return{pnl:t.reduce((s,x)=>s+x.pnl,0),n:t.filter(x=>x.type!=='placed'&&!(x.pnl===0&&x.type==='loss')).length,total:t.length}}
   function wS(wk){let p=0,n=0;wk.forEach(c=>{if(c.cur){const s=dS(c.d);p+=s.pnl;n+=s.n}});return{pnl:p,n}}
 
   let mp=0,mt=0,mx=0;for(let d=1;d<=nd;d++){const s=dS(d);mp+=s.pnl;mt+=s.n;if(Math.abs(s.pnl)>mx)mx=Math.abs(s.pnl)}
@@ -569,7 +569,7 @@ function Dashboard({syncCode,onLogout}){
       ]),
       mT.length>0&&h('div',{key:'trades',style:{marginBottom:12}},[
         h('div',{className:'section-label',key:'l'},'TRADES'),
-        ...mT.map((t,i)=>h('div',{className:'trade-item',key:'t'+i,style:t.hidden?{opacity:0.4}:{}},[
+        ...mT.map((t,i)=>h('div',{className:'trade-item',key:'t'+i},[
           h('div',{style:{display:'flex',alignItems:'center'},key:'l'},[h('div',{className:`trade-bar ${cls(t.pnl)}`,key:'b'}),h('div',{key:'i'},[h('div',{className:`trade-pnl ${cls(t.pnl)}`,key:'p'},fmt(t.pnl)),t.note&&h('div',{className:'trade-note',key:'n'},t.note)])]),
           h('div',{className:'trade-actions',key:'a'},[h('button',{className:'btn-edit',onClick:()=>editTr(i),key:'e'},'Edit'),h('button',{className:'btn-del',onClick:()=>delTrade(i),key:'d'},'×')]),
         ]))]),
