@@ -695,46 +695,48 @@ function Dashboard({syncCode,onLogout}){
       ]),
 
       // Balance chart
-      dailyBals.length>0&&h('div',{className:'chart-line',key:'chart'},
-        (()=>{
-          const bals=dailyBals.map(d=>d.bal);
-          const minB=Math.min(...bals);
-          const maxB=Math.max(...bals);
-          const range=maxB-minB||1;
-          const pad=8;
-          const w=100;
-          const ht=80;
-          const points=dailyBals.map((d,i)=>({
-            x:pad+(i/(dailyBals.length-1||1))*(w-2*pad),
-            y:pad+(1-(d.bal-minB)/range)*(ht-2*pad),
-            bal:d.bal,day:d.day,pnl:d.pnl
-          }));
-          const line=points.map((p,i)=>`${i===0?'M':'L'}${p.x},${p.y}`).join(' ');
-          const area=line+` L${points[points.length-1].x},${ht-pad} L${points[0].x},${ht-pad} Z`;
-          // Zero line
-          const zeroY=startBal>0?pad+(1-(startBal-minB)/range)*(ht-2*pad):null;
-          const lastP=points[points.length-1];
-          const isUp=currentBal>=startBal;
-          return h('svg',{className:'chart-svg',viewBox:`0 0 ${w} ${ht}`,preserveAspectRatio:'none',key:'svg'},[
-            // Gradient fill
-            h('defs',{key:'defs'},
-              h('linearGradient',{id:'balGrad',x1:'0',y1:'0',x2:'0',y2:'1',key:'g'},[
-                h('stop',{offset:'0%',stopColor:isUp?'rgba(74,222,128,0.3)':'rgba(248,113,113,0.3)',key:'s1'}),
-                h('stop',{offset:'100%',stopColor:'transparent',key:'s2'}),
-              ])
-            ),
-            h('path',{d:area,fill:'url(#balGrad)',key:'area'}),
-            h('path',{d:line,fill:'none',stroke:isUp?'#4ade80':'#f87171',strokeWidth:'0.8',strokeLinejoin:'round',key:'line'}),
-            // Starting balance line
-            zeroY!==null&&zeroY>=pad&&zeroY<=ht-pad&&h('line',{x1:0,y1:zeroY,x2:w,y2:zeroY,stroke:'rgba(255,255,255,0.1)',strokeWidth:'0.3',strokeDasharray:'2,2',key:'zero'}),
-            // End dot
-            h('circle',{cx:lastP.x,cy:lastP.y,r:'1.5',fill:isUp?'#4ade80':'#f87171',key:'dot'}),
-            // Labels
-            h('text',{x:2,y:pad-2,fill:'#64748b',fontSize:'4',fontFamily:'var(--font-mono)',key:'max'},fmt(maxB)),
-            h('text',{x:2,y:ht-2,fill:'#64748b',fontSize:'4',fontFamily:'var(--font-mono)',key:'min'},fmt(minB)),
-          ]);
-        })()
-      ),
+      dailyBals.length>0&&h('div',{key:'chart',style:{position:'relative',marginTop:12}},[
+        h('div',{key:'labels',style:{display:'flex',justifyContent:'space-between',fontSize:9,color:'#64748b',fontFamily:'var(--font-mono)',marginBottom:4}},[
+          h('span',{key:'l'},'1'),
+          h('span',{key:'m'},`${MO[month].slice(0,3)}`),
+          h('span',{key:'r'},String(nd)),
+        ]),
+        h('div',{key:'wrap',style:{position:'relative',height:80}},[
+          (()=>{
+            const bals=dailyBals.map(d=>d.bal);
+            const minB=Math.min(...bals);
+            const maxB=Math.max(...bals);
+            const range=maxB-minB||1;
+            const pad=4;
+            const w=800;
+            const ht=80;
+            const points=dailyBals.map((d,i)=>({
+              x:pad+(i/(dailyBals.length-1||1))*(w-2*pad),
+              y:pad+(1-(d.bal-minB)/range)*(ht-2*pad),
+            }));
+            const line=points.map((p,i)=>`${i===0?'M':'L'}${p.x},${p.y}`).join(' ');
+            const area=line+` L${points[points.length-1].x},${ht} L${points[0].x},${ht} Z`;
+            const isUp=currentBal>=startBal;
+            const zeroY=startBal>0?pad+(1-(startBal-minB)/range)*(ht-2*pad):null;
+            return h('svg',{style:{width:'100%',height:ht,display:'block'},viewBox:`0 0 ${w} ${ht}`,preserveAspectRatio:'none',key:'svg'},[
+              h('defs',{key:'defs'},
+                h('linearGradient',{id:'balGrad',x1:'0',y1:'0',x2:'0',y2:'1',key:'g'},[
+                  h('stop',{offset:'0%',stopColor:isUp?'rgba(74,222,128,0.25)':'rgba(248,113,113,0.25)',key:'s1'}),
+                  h('stop',{offset:'100%',stopColor:'transparent',key:'s2'}),
+                ])
+              ),
+              h('path',{d:area,fill:'url(#balGrad)',key:'area'}),
+              zeroY!==null&&zeroY>=0&&zeroY<=ht&&h('line',{x1:0,y1:zeroY,x2:w,y2:zeroY,stroke:'rgba(255,255,255,0.08)',strokeWidth:'1',strokeDasharray:'6,4',key:'zero'}),
+              h('path',{d:line,fill:'none',stroke:isUp?'#4ade80':'#f87171',strokeWidth:'3',strokeLinejoin:'round',strokeLinecap:'round',key:'line'}),
+              h('circle',{cx:points[points.length-1].x,cy:points[points.length-1].y,r:'5',fill:isUp?'#4ade80':'#f87171',key:'dot'}),
+            ]);
+          })(),
+        ]),
+        h('div',{key:'minmax',style:{display:'flex',justifyContent:'space-between',fontSize:9,color:'#475569',fontFamily:'var(--font-mono)',marginTop:4}},[
+          h('span',{key:'min'},`Low: ${fmt(Math.min(...dailyBals.map(d=>d.bal)))}`),
+          h('span',{key:'max'},`High: ${fmt(Math.max(...dailyBals.map(d=>d.bal)))}`),
+        ]),
+      ]),
     ]),
 
     // Day modal
