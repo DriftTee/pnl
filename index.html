@@ -357,6 +357,91 @@ function parseBovada(text){
 }
 
 // ============================================================
+//  TRADOVATE CSV PARSER
+// ============================================================
+function parseTradovateCSV(text){
+  // Parse CSV properly (handles quoted commas)
+  function parseCSVLine(line){
+    const result=[];let cell='';let inQuote=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){inQuote=!inQuote}
+      else if(ch===','&&!inQuote){result.push(cell.trim());cell=''}
+      else{cell+=ch}
+    }
+    result.push(cell.trim());
+    return result;
+  }
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+  if(lines.length<2)return[];
+  const headers=parseCSVLine(lines[0]);
+  const dateIdx=headers.indexOf('Date');
+  const deltaIdx=headers.indexOf('Delta');
+  const typeIdx=headers.indexOf('Cash Change Type');
+  const contractIdx=headers.indexOf('Contract');
+  const tsIdx=headers.indexOf('Timestamp');
+  if(dateIdx<0||deltaIdx<0||typeIdx<0)return[];
+
+  // Group by date + contract
+  const daily={};
+  for(let i=1;i<lines.length;i++){
+    const cols=parseCSVLine(lines[i]);
+    if(cols.length<=typeIdx)continue;
+    const cashType=cols[typeIdx].trim();
+    if(cashType==='Fund Transaction')continue;
+    const date=cols[dateIdx].trim(); // YYYY-MM-DD format
+    const delta=parseFloat((cols[deltaIdx]||'0').replace(/,/g,''));
+    const contract=contractIdx>=0?cols[contractIdx].trim():'';
+    if(!daily[date])daily[date]={byContract:{},totalPnl:0,totalComm:0,tradeCount:0};
+    if(contract&&!daily[date].byContract[contract])daily[date].byContract[contract]={pnl:0,comm:0,trades:0};
+    if(cashType==='Trade Paired'){
+      daily[date].totalPnl+=delta;
+      daily[date].tradeCount++;
+      if(contract){daily[date].byContract[contract].pnl+=delta;daily[date].byContract[contract].trades++}
+    }else if(cashType==='Commission'){
+      daily[date].totalComm+=delta;
+      if(contract)daily[date].byContract[contract].comm+=delta;
+    }
+  }
+
+  // Build results — one entry per contract per day for detail, or one per day
+  const results=[];
+  for(const[date,info]of Object.entries(daily)){
+    const[yr,mo,dy]=date.split('-').map(Number);
+    const dateKey=date;
+    const moNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dateLabel=`${moNames[mo-1]} ${dy}, ${yr}`;
+    const contracts=Object.entries(info.byContract);
+    if(contracts.length>0){
+      for(const[sym,data]of contracts){
+        const net=data.pnl+data.comm;
+        results.push({
+          dateKey,dateLabel,
+          type:net>0?'win':net<0?'loss':'other',
+          typeLabel:net>0?'Win':net<0?'Loss':'Flat',
+          betType:'Futures',
+          pnl:Math.round(net*100)/100,
+          note:`${sym} (${data.trades} fills, comm: $${data.comm.toFixed(2)})`,
+          raw:`${sym} P&L:${data.pnl} Comm:${data.comm}`
+        });
+      }
+    }else{
+      const net=info.totalPnl+info.totalComm;
+      results.push({
+        dateKey,dateLabel,
+        type:net>0?'win':net<0?'loss':'other',
+        typeLabel:net>0?'Win':net<0?'Loss':'Flat',
+        betType:'Futures',
+        pnl:Math.round(net*100)/100,
+        note:`${info.tradeCount} trades (comm: $${info.totalComm.toFixed(2)})`,
+        raw:`P&L:${info.totalPnl} Comm:${info.totalComm}`
+      });
+    }
+  }
+  return results;
+}
+
+// ============================================================
 //  SETUP SCREEN
 // ============================================================
 function SetupScreen({onConnect}){
@@ -378,20 +463,17 @@ function SetupScreen({onConnect}){
 //  IMPORT MODAL
 // ============================================================
 function ImportModal({onClose,onImport}){
+  const[source,setSource]=useState(null); // 'bovada' or 'tradovate'
   const[raw,setRaw]=useState('');
   const[parsed,setParsed]=useState(null);
-  const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true});
+  const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true,futures:true});
+  const fileRef=useRef(null);
 
-  const doParse=()=>{
+  const doParseBovada=()=>{
     const r=parseBovada(raw);
-    // Match settled bets with their placed entries to compute NET P&L per bet
-    // Win: net = return - stake (profit only)
-    // Loss: net = 0 - stake = -stake (actual loss)
-    // CashOut: net = return - stake
     const settled=r.filter(e=>e.type==='win'||e.type==='loss'||e.type==='cashout');
     const placed=r.filter(e=>e.type==='placed');
     const usedPlaced=new Set();
-
     function findPlaced(entry){
       const eNote=(entry.note||'').toLowerCase();
       const eWords=eNote.split(/[\s|,]+/).filter(w=>w.length>2);
@@ -409,19 +491,15 @@ function ImportModal({onClose,onImport}){
       if(best&&bestScore>=1){usedPlaced.add(bestIdx);return best}
       return null;
     }
-
-    // Pass 1: keyword match
     for(const s of settled){
       const p=findPlaced(s);
       if(p){
-        const stake=Math.abs(p.pnl); // stake is positive number
-        if(s.type==='win'){s.pnl=s.pnl-stake} // return - stake = profit
-        else if(s.type==='loss'){s.pnl=-stake} // lost the stake
-        else if(s.type==='cashout'){s.pnl=s.pnl-stake} // partial return - stake
+        const stake=Math.abs(p.pnl);
+        if(s.type==='win'){s.pnl=s.pnl-stake}
+        else if(s.type==='loss'){s.pnl=-stake}
+        else if(s.type==='cashout'){s.pnl=s.pnl-stake}
       }
     }
-
-    // Pass 2: fallback for unmatched - pair by bet type then amount
     const unmatched=settled.filter(s=>s.type==='loss'&&s.pnl===0);
     const unusedPlaced=placed.filter((_,i)=>!usedPlaced.has(i));
     for(const loss of unmatched){
@@ -439,8 +517,19 @@ function ImportModal({onClose,onImport}){
       }
       if(best){loss.pnl=-Math.abs(best.pnl);best.pnl=0}
     }
-
     setParsed(r);
+  };
+
+  const handleFileUpload=e=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const csv=ev.target.result;
+      const r=parseTradovateCSV(csv);
+      setParsed(r);
+    };
+    reader.readAsText(file);
   };
 
   const filtered=(parsed||[]).filter(e=>{
@@ -455,8 +544,6 @@ function ImportModal({onClose,onImport}){
   });
 
   const totalPnl=filtered.reduce((s,e)=>s+e.pnl,0);
-
-  // Group by date
   const grouped={};
   filtered.forEach(e=>{if(!grouped[e.dateKey])grouped[e.dateKey]={label:e.dateLabel,entries:[]};grouped[e.dateKey].entries.push(e)});
   const sortedDates=Object.keys(grouped).sort().reverse();
@@ -478,26 +565,70 @@ function ImportModal({onClose,onImport}){
     h('div',{className:'modal-box wide',onClick:e=>e.stopPropagation()},[
       h('div',{className:'modal-handle',key:'handle'}),
       h('div',{className:'modal-header',key:'hdr'},[
-        h('div',{key:'l'},h('div',{className:'modal-title'},'Import from Bovada')),
+        h('div',{key:'l'},h('div',{className:'modal-title'},!source?'Import Trades':source==='bovada'?'Import from Bovada':'Import from Tradovate')),
         h('button',{className:'modal-close',onClick:onClose,key:'x'},'✕'),
       ]),
 
-      !parsed && h('div',{key:'input'},[
+      // Source selector
+      !source && !parsed && h('div',{key:'sources',style:{display:'flex',gap:10,flexDirection:'column'}},[
+        h('button',{key:'bov',onClick:()=>setSource('bovada'),style:{
+          background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:10,
+          padding:'18px 16px',cursor:'pointer',textAlign:'left',transition:'all .15s',color:'#e2e8f0'
+        }},h('div',{style:{display:'flex',alignItems:'center',gap:10}},[
+          h('span',{style:{fontSize:20},key:'ic'},'🎰'),
+          h('div',{key:'txt'},[
+            h('div',{style:{fontFamily:"'Space Grotesk',sans-serif",fontWeight:600,fontSize:14,marginBottom:2},key:'t'},'Bovada'),
+            h('div',{style:{fontSize:11,color:'#64748b'},key:'d'},'Paste bet history from your account'),
+          ]),
+        ])),
+        h('button',{key:'tv',onClick:()=>setSource('tradovate'),style:{
+          background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:10,
+          padding:'18px 16px',cursor:'pointer',textAlign:'left',transition:'all .15s',color:'#e2e8f0'
+        }},h('div',{style:{display:'flex',alignItems:'center',gap:10}},[
+          h('span',{style:{fontSize:20},key:'ic'},'📈'),
+          h('div',{key:'txt'},[
+            h('div',{style:{fontFamily:"'Space Grotesk',sans-serif",fontWeight:600,fontSize:14,marginBottom:2},key:'t'},'Tradovate'),
+            h('div',{style:{fontSize:11,color:'#64748b'},key:'d'},'Upload Cash History CSV export'),
+          ]),
+        ])),
+      ]),
+
+      // Bovada input
+      source==='bovada'&&!parsed && h('div',{key:'bovInput'},[
         h('div',{className:'section-label',key:'l'},'PASTE YOUR BET HISTORY'),
         h('textarea',{className:'form-textarea',key:'ta',value:raw,onChange:e=>setRaw(e.target.value),
           placeholder:'Go to Bovada → Account → History\nSelect and copy your bet history, then paste here...',
           rows:8,style:{minHeight:150}}),
-        h('div',{className:'btn-row',key:'btns'},
-          h('button',{className:'btn-submit',onClick:doParse,disabled:!raw.trim()},'Parse Data')),
+        h('div',{className:'btn-row',key:'btns'},[
+          h('button',{className:'btn-submit',onClick:doParseBovada,disabled:!raw.trim(),key:'p'},'Parse Data'),
+          h('button',{className:'btn-cancel',onClick:()=>setSource(null),key:'b'},'Back'),
+        ]),
       ]),
 
+      // Tradovate input
+      source==='tradovate'&&!parsed && h('div',{key:'tvInput'},[
+        h('div',{className:'section-label',key:'l'},'UPLOAD CASH HISTORY CSV'),
+        h('div',{key:'drop',style:{
+          border:'2px dashed rgba(99,102,241,0.3)',borderRadius:10,padding:'32px 16px',textAlign:'center',
+          cursor:'pointer',transition:'all .15s',background:'rgba(99,102,241,0.04)'
+        },onClick:()=>fileRef.current&&fileRef.current.click()},[
+          h('div',{style:{fontSize:28,marginBottom:8},key:'ic'},'📁'),
+          h('div',{style:{fontSize:13,color:'#a5b4fc',fontWeight:600,fontFamily:"'Space Grotesk',sans-serif"},key:'t'},'Click to select CSV file'),
+          h('div',{style:{fontSize:11,color:'#64748b',marginTop:4},key:'d'},'Tradovate → Account → Cash History → Export'),
+          h('input',{ref:fileRef,type:'file',accept:'.csv',style:{display:'none'},onChange:handleFileUpload,key:'f'}),
+        ]),
+        h('div',{className:'btn-row',key:'btns',style:{marginTop:10}},
+          h('button',{className:'btn-cancel',onClick:()=>setSource(null),key:'b'},'Back')),
+      ]),
+
+      // Preview (shared for both sources)
       parsed && h('div',{key:'preview'},[
         h('div',{className:'filter-row',key:'filters'},[
           h('button',{className:`filter-chip ${filters.win?'active':''}`,onClick:()=>toggleFilter('win'),key:'w'},'Wins'),
           h('button',{className:`filter-chip ${filters.loss?'active':''}`,onClick:()=>toggleFilter('loss'),key:'l'},'Losses'),
-          h('button',{className:`filter-chip ${filters.placed?'active':''}`,onClick:()=>toggleFilter('placed'),key:'p'},'Placed'),
-          h('button',{className:`filter-chip ${filters.cashout?'active':''}`,onClick:()=>toggleFilter('cashout'),key:'c'},'Cash Out'),
-          h('button',{className:`filter-chip ${filters.gameplay?'active':''}`,onClick:()=>toggleFilter('gameplay'),key:'g'},'Casino'),
+          source==='bovada'&&h('button',{className:`filter-chip ${filters.placed?'active':''}`,onClick:()=>toggleFilter('placed'),key:'p'},'Placed'),
+          source==='bovada'&&h('button',{className:`filter-chip ${filters.cashout?'active':''}`,onClick:()=>toggleFilter('cashout'),key:'c'},'Cash Out'),
+          source==='bovada'&&h('button',{className:`filter-chip ${filters.gameplay?'active':''}`,onClick:()=>toggleFilter('gameplay'),key:'g'},'Casino'),
         ]),
 
         h('div',{className:'import-summary',key:'summary'},[
@@ -518,7 +649,7 @@ function ImportModal({onClose,onImport}){
 
         h('div',{className:'btn-row',key:'btns'},[
           h('button',{className:'btn-submit',onClick:doImport,key:'i'},`Import ${filtered.length} Entries`),
-          h('button',{className:'btn-cancel',onClick:()=>setParsed(null),key:'b'},'Back'),
+          h('button',{className:'btn-cancel',onClick:()=>{setParsed(null);setRaw('')},key:'b'},'Back'),
         ]),
       ]),
     ])
