@@ -360,7 +360,6 @@ function parseBovada(text){
 //  TRADOVATE CSV PARSER
 // ============================================================
 function parseTradovateCSV(text){
-  // Parse CSV properly (handles quoted commas)
   function parseCSVLine(line){
     const result=[];let cell='';let inQuote=false;
     for(let i=0;i<line.length;i++){
@@ -382,62 +381,66 @@ function parseTradovateCSV(text){
   const tsIdx=headers.indexOf('Timestamp');
   if(dateIdx<0||deltaIdx<0||typeIdx<0)return[];
 
-  // Group by date + contract
-  const daily={};
+  // Group Trade Paired by timestamp+contract (one trade = all fills at same time for same contract)
+  const tradeGroups={};
+  const commByDateContract={};
   for(let i=1;i<lines.length;i++){
     const cols=parseCSVLine(lines[i]);
     if(cols.length<=typeIdx)continue;
     const cashType=cols[typeIdx].trim();
     if(cashType==='Fund Transaction')continue;
-    const date=cols[dateIdx].trim(); // YYYY-MM-DD format
+    const date=cols[dateIdx].trim();
     const delta=parseFloat((cols[deltaIdx]||'0').replace(/,/g,''));
     const contract=contractIdx>=0?cols[contractIdx].trim():'';
-    if(!daily[date])daily[date]={byContract:{},totalPnl:0,totalComm:0,tradeCount:0};
-    if(contract&&!daily[date].byContract[contract])daily[date].byContract[contract]={pnl:0,comm:0,trades:0};
+    const ts=tsIdx>=0?cols[tsIdx].trim():'';
     if(cashType==='Trade Paired'){
-      daily[date].totalPnl+=delta;
-      daily[date].tradeCount++;
-      if(contract){daily[date].byContract[contract].pnl+=delta;daily[date].byContract[contract].trades++}
+      // Group by timestamp+contract — fills at the same second for same contract = 1 trade
+      const key=ts+'|'+contract;
+      if(!tradeGroups[key])tradeGroups[key]={date,contract,ts,pnl:0,fills:0};
+      tradeGroups[key].pnl+=delta;
+      tradeGroups[key].fills++;
     }else if(cashType==='Commission'){
-      daily[date].totalComm+=delta;
-      if(contract)daily[date].byContract[contract].comm+=delta;
+      const key=date+'|'+contract;
+      if(!commByDateContract[key])commByDateContract[key]={total:0,count:0};
+      commByDateContract[key].total+=delta;
+      commByDateContract[key].count++;
     }
   }
 
-  // Build results — one entry per contract per day for detail, or one per day
-  const results=[];
-  for(const[date,info]of Object.entries(daily)){
-    const[yr,mo,dy]=date.split('-').map(Number);
-    const dateKey=date;
-    const moNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const dateLabel=`${moNames[mo-1]} ${dy}, ${yr}`;
-    const contracts=Object.entries(info.byContract);
-    if(contracts.length>0){
-      for(const[sym,data]of contracts){
-        const net=data.pnl+data.comm;
-        results.push({
-          dateKey,dateLabel,
-          type:net>0?'win':net<0?'loss':'other',
-          typeLabel:net>0?'Win':net<0?'Loss':'Flat',
-          betType:'Futures',
-          pnl:Math.round(net*100)/100,
-          note:`${sym} (${data.trades} fills, comm: $${data.comm.toFixed(2)})`,
-          raw:`${sym} P&L:${data.pnl} Comm:${data.comm}`
-        });
-      }
-    }else{
-      const net=info.totalPnl+info.totalComm;
-      results.push({
-        dateKey,dateLabel,
-        type:net>0?'win':net<0?'loss':'other',
-        typeLabel:net>0?'Win':net<0?'Loss':'Flat',
-        betType:'Futures',
-        pnl:Math.round(net*100)/100,
-        note:`${info.tradeCount} trades (comm: $${info.totalComm.toFixed(2)})`,
-        raw:`P&L:${info.totalPnl} Comm:${info.totalComm}`
-      });
-    }
+  // Count trades per day+contract to split commission
+  const tradeCountByDC={};
+  for(const g of Object.values(tradeGroups)){
+    const key=g.date+'|'+g.contract;
+    tradeCountByDC[key]=(tradeCountByDC[key]||0)+1;
   }
+
+  // Build results — one entry per trade group
+  const results=[];
+  const moNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  for(const g of Object.values(tradeGroups)){
+    const[yr,mo,dy]=g.date.split('-').map(Number);
+    const dateKey=g.date;
+    const dateLabel=`${moNames[mo-1]} ${dy}, ${yr}`;
+    const dcKey=g.date+'|'+g.contract;
+    const totalComm=commByDateContract[dcKey]?commByDateContract[dcKey].total:0;
+    const numTrades=tradeCountByDC[dcKey]||1;
+    const comm=totalComm/numTrades;
+    const net=Math.round((g.pnl+comm)*100)/100;
+    let time='';
+    if(g.ts){const tm=g.ts.match(/(\d{2}:\d{2}:\d{2})/);if(tm)time=tm[1]}
+    const fillLabel=g.fills>1?` (${g.fills} contracts)`:'';
+    results.push({
+      dateKey,dateLabel,
+      type:net>0?'win':net<0?'loss':'other',
+      typeLabel:net>0?'Win':net<0?'Loss':'Flat',
+      betType:'Futures',
+      pnl:net,
+      note:`${g.contract}${fillLabel} ${g.pnl>=0?'+':''}${g.pnl.toFixed(2)}${time?' @ '+time:''}`,
+      raw:`${g.contract} P&L:${g.pnl} Comm:${comm.toFixed(2)} Fills:${g.fills}`
+    });
+  }
+  // Sort by timestamp
+  results.sort((a,b)=>(a.note>b.note?1:-1));
   return results;
 }
 
