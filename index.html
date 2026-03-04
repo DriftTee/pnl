@@ -821,9 +821,10 @@ function Dashboard({syncCode,onLogout}){
     const today=dk(now.getFullYear(),now.getMonth(),now.getDate());
     let totalNeeded=0,daysTotal=0,daysElapsed=0,daysLeft=0,pnlSinceStart=0;
     let dailyTarget=0,dailyPct=0;
+    const goalStartBal=goal.startBal||startBal;
 
     if(goal.type==='fixed'){
-      totalNeeded=goal.target-(goal.startBal||startBal);
+      totalNeeded=goal.target-goalStartBal;
       daysTotal=countTradingDays(goal.startDate,goal.deadline,td,od,true);
       daysElapsed=countTradingDays(goal.startDate,today,td,od,true);
       daysLeft=Math.max(0,daysTotal-daysElapsed);
@@ -835,7 +836,7 @@ function Dashboard({syncCode,onLogout}){
       }
     }else{
       // Monthly: target is a balance to reach from startBal
-      totalNeeded=goal.target-(goal.startBal||startBal);
+      totalNeeded=goal.target-goalStartBal;
       daysTotal=totalTradingDaysInMonth(td,od);
       daysElapsed=elapsedTradingDays(td,od);
       daysLeft=tradingDaysLeft(td,od);
@@ -846,15 +847,15 @@ function Dashboard({syncCode,onLogout}){
 
     const remaining=totalNeeded-pnlSinceStart;
     dailyTarget=daysLeft>0?remaining/daysLeft:remaining;
-    const balForPct=(goal.startBal||startBal||currentBal);
-    dailyPct=balForPct>0?(dailyTarget/balForPct)*100:0;
+    const curBal=goalStartBal+pnlSinceStart;
+    dailyPct=curBal>0?(dailyTarget/curBal)*100:0;
     const progress=totalNeeded>0?Math.min(100,Math.max(0,(pnlSinceStart/totalNeeded)*100)):0;
     const onTrack=daysTotal>0?pnlSinceStart>=(totalNeeded*(daysElapsed/daysTotal)):false;
     const avgDailyTarget=daysTotal>0?totalNeeded/daysTotal:totalNeeded;
 
     return{totalNeeded,daysTotal,daysElapsed,daysLeft,pnlSinceStart,remaining,
       dailyTarget,dailyPct,progress,onTrack,avgDailyTarget,tradeDays:td,offDays:od,
-      goalStartBal:goal.startBal||startBal,goalTarget:goal.target};
+      goalStartBal,goalTarget:goal.target};
   })();
 
   // Check if a specific day met the daily goal
