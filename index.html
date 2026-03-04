@@ -690,9 +690,10 @@ function Dashboard({syncCode,onLogout}){
   const[startBal,setStartBal]=useState(0);
   const[editBal,setEditBal]=useState(false);
   const[balInput,setBalInput]=useState('');
-  const[goal,setGoal]=useState(null); // {type:'fixed'|'monthly', target:number, deadline:'YYYY-MM-DD', startDate:'YYYY-MM-DD', startBal:number}
+  const[goal,setGoal]=useState(null);
   const[editGoal,setEditGoal]=useState(false);
-  const[goalForm,setGoalForm]=useState({type:'monthly',target:'',deadline:''});
+  const[goalForm,setGoalForm]=useState({type:'monthly',target:'',deadline:'',tradeDays:[1,2,3,4,5],offDays:[]});
+  const[offDayInput,setOffDayInput]=useState('');
   const[modal,setModal]=useState(null);
   const[importModal,setImportModal]=useState(false);
   const[form,setForm]=useState({pnl:'',note:''});
@@ -760,23 +761,72 @@ function Dashboard({syncCode,onLogout}){
     setBalInput('');
   };
 
+  // Trading day helpers
+  function isTradingDay(dateStr, tradeDays, offDays){
+    const d=new Date(dateStr+'T12:00:00');
+    const dow=d.getDay();
+    if(!tradeDays.includes(dow))return false;
+    if(offDays&&offDays.includes(dateStr))return false;
+    return true;
+  }
+  function countTradingDays(startDate,endDate,tradeDays,offDays,includeStart){
+    let count=0;
+    const sd=new Date(startDate+'T12:00:00');
+    const ed=new Date(endDate+'T12:00:00');
+    const cur=new Date(sd);
+    if(!includeStart)cur.setDate(cur.getDate()+1);
+    while(cur<=ed){
+      const ds=dk(cur.getFullYear(),cur.getMonth(),cur.getDate());
+      if(isTradingDay(ds,tradeDays,offDays))count++;
+      cur.setDate(cur.getDate()+1);
+    }
+    return count;
+  }
+  function tradingDaysLeft(tradeDays,offDays){
+    // Trading days remaining in current viewed month from today
+    const today=now.getDate();
+    let count=0;
+    for(let d=today+1;d<=nd;d++){
+      const ds=dk(year,month,d);
+      if(isTradingDay(ds,tradeDays,offDays))count++;
+    }
+    // Include today if it's a trading day and we haven't traded yet
+    const todayKey=dk(year,month,today);
+    if(today<=nd&&isTradingDay(todayKey,tradeDays,offDays))count++;
+    return count;
+  }
+  function totalTradingDaysInMonth(tradeDays,offDays){
+    let count=0;
+    for(let d=1;d<=nd;d++){
+      const ds=dk(year,month,d);
+      if(isTradingDay(ds,tradeDays,offDays))count++;
+    }
+    return count;
+  }
+  function elapsedTradingDays(tradeDays,offDays){
+    const today=Math.min(now.getDate(),nd);
+    let count=0;
+    for(let d=1;d<=today;d++){
+      const ds=dk(year,month,d);
+      if(isTradingDay(ds,tradeDays,offDays))count++;
+    }
+    return count;
+  }
+
   // Goal computations
   const goalData=(()=>{
     if(!goal)return null;
+    const td=goal.tradeDays||[1,2,3,4,5];
+    const od=goal.offDays||[];
     const today=dk(now.getFullYear(),now.getMonth(),now.getDate());
     let totalNeeded=0,daysTotal=0,daysElapsed=0,daysLeft=0,pnlSinceStart=0;
     let dailyTarget=0,dailyPct=0;
 
     if(goal.type==='fixed'){
-      // Fixed: reach target $ by deadline starting from startDate
       totalNeeded=goal.target-(goal.startBal||startBal);
-      const sd=new Date(goal.startDate+'T00:00:00');
-      const ed=new Date(goal.deadline+'T00:00:00');
-      const td=new Date(today+'T00:00:00');
-      daysTotal=Math.max(1,Math.round((ed-sd)/(86400000)));
-      daysElapsed=Math.max(0,Math.round((td-sd)/(86400000)));
+      daysTotal=countTradingDays(goal.startDate,goal.deadline,td,od,true);
+      daysElapsed=countTradingDays(goal.startDate,today,td,od,true);
       daysLeft=Math.max(0,daysTotal-daysElapsed);
-      // P&L since goal start
       const allSorted=Object.keys(trades).sort();
       for(const k of allSorted){
         if(k>=goal.startDate&&k<=goal.deadline){
@@ -784,13 +834,11 @@ function Dashboard({syncCode,onLogout}){
         }
       }
     }else{
-      // Monthly: make target $ per month
-      totalNeeded=goal.target;
-      daysTotal=nd; // trading days in current month (using calendar days)
-      const td=now.getDate();
-      daysElapsed=Math.min(td,nd);
-      daysLeft=Math.max(0,nd-td);
-      // P&L this month
+      // Monthly: target is a balance to reach from startBal
+      totalNeeded=goal.target-(goal.startBal||startBal);
+      daysTotal=totalTradingDaysInMonth(td,od);
+      daysElapsed=elapsedTradingDays(td,od);
+      daysLeft=tradingDaysLeft(td,od);
       for(let d=1;d<=nd;d++){
         pnlSinceStart+=(trades[dk(year,month,d)]||[]).reduce((s,x)=>s+x.pnl,0);
       }
@@ -801,13 +849,12 @@ function Dashboard({syncCode,onLogout}){
     const balForPct=(goal.startBal||startBal||currentBal);
     dailyPct=balForPct>0?(dailyTarget/balForPct)*100:0;
     const progress=totalNeeded>0?Math.min(100,Math.max(0,(pnlSinceStart/totalNeeded)*100)):0;
-    const onTrack=pnlSinceStart>=(totalNeeded*(daysElapsed/daysTotal));
-
-    // Per-day goal check: did each day meet the average daily target?
-    const avgDailyTarget=totalNeeded/daysTotal;
+    const onTrack=daysTotal>0?pnlSinceStart>=(totalNeeded*(daysElapsed/daysTotal)):false;
+    const avgDailyTarget=daysTotal>0?totalNeeded/daysTotal:totalNeeded;
 
     return{totalNeeded,daysTotal,daysElapsed,daysLeft,pnlSinceStart,remaining,
-      dailyTarget,dailyPct,progress,onTrack,avgDailyTarget};
+      dailyTarget,dailyPct,progress,onTrack,avgDailyTarget,tradeDays:td,offDays:od,
+      goalStartBal:goal.startBal||startBal,goalTarget:goal.target};
   })();
 
   // Check if a specific day met the daily goal
@@ -818,18 +865,34 @@ function Dashboard({syncCode,onLogout}){
     return s.pnl>=goalData.avgDailyTarget;
   }
 
+  const toggleTradeDay=d=>setGoalForm(f=>{
+    const days=[...f.tradeDays];
+    const idx=days.indexOf(d);
+    if(idx>=0)days.splice(idx,1);else days.push(d);
+    days.sort();
+    return{...f,tradeDays:days};
+  });
+  const addOffDay=()=>{
+    if(!offDayInput)return;
+    setGoalForm(f=>({...f,offDays:[...new Set([...f.offDays,offDayInput])].sort()}));
+    setOffDayInput('');
+  };
+  const removeOffDay=d=>setGoalForm(f=>({...f,offDays:f.offDays.filter(x=>x!==d)}));
+
   const submitGoal=()=>{
     const target=parseFloat(goalForm.target);
     if(isNaN(target)||target<=0)return;
     const today=dk(now.getFullYear(),now.getMonth(),now.getDate());
+    const tradeDays=goalForm.tradeDays.length>0?goalForm.tradeDays:[1,2,3,4,5];
+    const offDays=goalForm.offDays||[];
     if(goalForm.type==='fixed'){
       if(!goalForm.deadline)return;
-      saveGoal({type:'fixed',target,deadline:goalForm.deadline,startDate:today,startBal:currentBal});
+      saveGoal({type:'fixed',target,deadline:goalForm.deadline,startDate:today,startBal:currentBal,tradeDays,offDays});
     }else{
-      saveGoal({type:'monthly',target,startDate:today,startBal:currentBal});
+      saveGoal({type:'monthly',target,startDate:today,startBal:currentBal,tradeDays,offDays});
     }
     setEditGoal(false);
-    setGoalForm({type:'monthly',target:'',deadline:''});
+    setGoalForm({type:'monthly',target:'',deadline:'',tradeDays:[1,2,3,4,5],offDays:[]});
   };
 
   const openDay=d=>{setModal({y:year,m:month,d});setForm({pnl:'',note:''});setEditIdx(null)};
@@ -907,12 +970,15 @@ function Dashboard({syncCode,onLogout}){
         h('div',{className:'goal-title',key:'t'},goal?
           (goal.type==='monthly'?'MONTHLY GOAL':'GOAL TRACKER')
           :'SET A GOAL'),
+        goal&&goalData&&h('div',{style:{fontSize:10,color:'#64748b',marginTop:2},key:'sub'},
+          `${fmt(goalData.goalStartBal)} → ${fmt(goalData.goalTarget)}`),
         h('div',{style:{display:'flex',gap:6},key:'btns'},[
           goal&&h('button',{className:'goal-edit-btn',key:'del',onClick:()=>{if(confirm('Remove goal?'))saveGoal(null)},
             style:{color:'#f87171',background:'rgba(248,113,113,0.1)',borderColor:'rgba(248,113,113,0.2)'}},'Remove'),
           h('button',{className:'goal-edit-btn',key:'e',onClick:()=>{
             setEditGoal(!editGoal);
-            if(goal)setGoalForm({type:goal.type,target:String(goal.target),deadline:goal.deadline||''});
+            if(goal)setGoalForm({type:goal.type,target:String(goal.target),deadline:goal.deadline||'',
+              tradeDays:goal.tradeDays||[1,2,3,4,5],offDays:goal.offDays||[]});
           }},goal?'Edit':'+ Set Goal'),
         ]),
       ]),
@@ -925,11 +991,13 @@ function Dashboard({syncCode,onLogout}){
           h('button',{className:`goal-type-btn ${goalForm.type==='fixed'?'active':''}`,key:'f',
             onClick:()=>setGoalForm(f=>({...f,type:'fixed'}))},'Fixed Date'),
         ]),
+        h('div',{style:{fontSize:11,color:'#64748b',padding:'6px 0',textAlign:'center'},key:'balHint'},
+          `Current balance: ${fmt(currentBal)}`),
         h('div',{className:'form-row',key:'fields'},[
           h('div',{className:'form-field',key:'target'},[
-            h('div',{className:'form-label',key:'l'},goalForm.type==='monthly'?'Monthly target ($)':'Target balance ($)'),
+            h('div',{className:'form-label',key:'l'},'Target balance ($)'),
             h('input',{className:'form-input',type:'number',step:'0.01',value:goalForm.target,
-              placeholder:goalForm.type==='monthly'?'e.g. 5000':'e.g. 60000',
+              placeholder:goalForm.type==='monthly'?'e.g. 55000':'e.g. 60000',
               onChange:e=>setGoalForm(f=>({...f,target:e.target.value})),key:'i'}),
           ]),
           goalForm.type==='fixed'&&h('div',{className:'form-field',key:'date'},[
@@ -938,7 +1006,41 @@ function Dashboard({syncCode,onLogout}){
               onChange:e=>setGoalForm(f=>({...f,deadline:e.target.value})),key:'i'}),
           ]),
         ]),
-        h('div',{className:'btn-row',key:'btns',style:{marginTop:8}},[
+
+        // Trading days selector
+        h('div',{key:'tradeDays',style:{marginTop:10}},[
+          h('div',{className:'form-label',key:'l'},'Trading days'),
+          h('div',{style:{display:'flex',gap:4,marginTop:4},key:'days'},
+            [0,1,2,3,4,5,6].map(d=>h('button',{key:d,onClick:()=>toggleTradeDay(d),style:{
+              flex:1,padding:'8px 0',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+              fontFamily:"'Space Grotesk',sans-serif",transition:'all .15s',
+              background:goalForm.tradeDays.includes(d)?'rgba(99,102,241,0.2)':'rgba(255,255,255,0.03)',
+              border:goalForm.tradeDays.includes(d)?'1px solid rgba(99,102,241,0.4)':'1px solid rgba(255,255,255,0.06)',
+              color:goalForm.tradeDays.includes(d)?'#a5b4fc':'#475569',
+            }},DS[d]))
+          ),
+        ]),
+
+        // Off days (holidays)
+        h('div',{key:'offDays',style:{marginTop:10}},[
+          h('div',{className:'form-label',key:'l'},'Off days / holidays'),
+          h('div',{style:{display:'flex',gap:6,marginTop:4},key:'add'},[
+            h('input',{className:'form-input',type:'date',value:offDayInput,
+              onChange:e=>setOffDayInput(e.target.value),key:'i',
+              style:{flex:1,padding:'6px 8px',fontSize:12}}),
+            h('button',{className:'btn-submit',onClick:addOffDay,key:'b',
+              style:{flex:'none',padding:'6px 14px',fontSize:11}},'+'),
+          ]),
+          goalForm.offDays.length>0&&h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:6},key:'list'},
+            goalForm.offDays.map(d=>h('span',{key:d,onClick:()=>removeOffDay(d),style:{
+              fontSize:10,padding:'3px 8px',borderRadius:4,cursor:'pointer',
+              background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',color:'#f87171',
+              transition:'all .15s',
+            }},d+' ✕'))
+          ),
+        ]),
+
+        h('div',{className:'btn-row',key:'btns',style:{marginTop:10}},[
           h('button',{className:'btn-submit',onClick:submitGoal,key:'s'},'Save Goal'),
           h('button',{className:'btn-cancel',onClick:()=>setEditGoal(false),key:'c'},'Cancel'),
         ]),
@@ -954,7 +1056,7 @@ function Dashboard({syncCode,onLogout}){
               goalData.onTrack?'linear-gradient(90deg,#6366f1,#818cf8)':'linear-gradient(90deg,#f59e0b,#f97316)'
           }}),
           h('div',{className:'goal-progress-text',key:'txt'},
-            `${fmt(goalData.pnlSinceStart)} / ${fmt(goalData.totalNeeded)} (${goalData.progress.toFixed(1)}%)`
+            `${fmt(goalData.goalStartBal+goalData.pnlSinceStart)} → ${fmt(goalData.goalTarget)} (${goalData.progress.toFixed(1)}%)`
           ),
         ]),
 
@@ -976,7 +1078,7 @@ function Dashboard({syncCode,onLogout}){
               goalData.remaining<=0?fmt(0):fmt(goalData.remaining)),
           ]),
           h('div',{className:'goal-stat',key:'days'},[
-            h('div',{className:'goal-stat-label',key:'l'},'DAYS LEFT'),
+            h('div',{className:'goal-stat-label',key:'l'},'TRADE DAYS LEFT'),
             h('div',{className:'goal-stat-value',key:'v',style:{color:'#e2e8f0'}},
               `${goalData.daysLeft}`),
           ]),
