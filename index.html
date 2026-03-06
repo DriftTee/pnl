@@ -184,6 +184,33 @@
   .goal-type-btn.active{background:var(--accent-dim);border-color:rgba(99,102,241,0.4);color:var(--accent-text)}
   .goal-badge{display:inline-block;font-size:8px;vertical-align:super;margin-left:2px;line-height:1;color:#facc15;text-shadow:0 0 4px rgba(250,204,21,0.5)}
   @media(max-width:400px){.goal-stats{grid-template-columns:repeat(2,1fr)}}
+
+  /* Restrictions section */
+  .rules-section{margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;overflow:hidden}
+  .rules-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .rules-title{font-size:10px;color:var(--text-dim);letter-spacing:1px;font-family:var(--font-display)}
+  .rule-card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;transition:all .15s}
+  .rule-card.pass{border-left:3px solid #4ade80;background:rgba(34,197,94,0.04)}
+  .rule-card.fail{border-left:3px solid #f87171;background:rgba(248,113,113,0.04)}
+  .rule-card.warn{border-left:3px solid #facc15;background:rgba(250,204,21,0.04)}
+  .rule-card.neutral{border-left:3px solid #475569}
+  .rule-top{display:flex;justify-content:space-between;align-items:center}
+  .rule-name{font-size:12px;font-weight:600;font-family:var(--font-display)}
+  .rule-status{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;font-family:var(--font-display);letter-spacing:.5px}
+  .rule-status.pass{background:var(--green-dim);color:var(--green)}
+  .rule-status.fail{background:var(--red-dim);color:var(--red)}
+  .rule-status.warn{background:var(--yellow-dim);color:var(--yellow)}
+  .rule-detail{font-size:10px;color:var(--text-muted);margin-top:4px;line-height:1.4}
+  .rule-progress{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:6px;overflow:hidden}
+  .rule-progress-bar{height:100%;border-radius:2px;transition:width .3s}
+  .rule-actions{display:flex;gap:4px;margin-left:8px;flex-shrink:0}
+  .rule-del{background:none;border:none;color:#475569;cursor:pointer;font-size:14px;padding:2px 4px;transition:color .15s}
+  .rule-del:hover{color:#f87171}
+  .add-rule-form{background:rgba(0,0,0,0.15);border-radius:8px;padding:12px;margin-top:8px;border:1px solid var(--border)}
+  .preset-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+  .preset-chip{font-size:9px;padding:4px 8px;border-radius:4px;cursor:pointer;font-family:var(--font-display);
+    border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:var(--accent-text);transition:all .15s}
+  .preset-chip:hover{background:rgba(99,102,241,0.15)}
   .balance-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
   .balance-title{font-size:10px;color:var(--text-dim);letter-spacing:1px;font-family:var(--font-display)}
   .balance-value{font-size:24px;font-weight:700}
@@ -716,6 +743,11 @@ function Dashboard({syncCode,onLogout}){
   const[editGoal,setEditGoal]=useState(false);
   const[goalForm,setGoalForm]=useState({type:'monthly',target:'',deadline:'',tradeDays:[1,2,3,4,5],offDays:[]});
   const[offDayInput,setOffDayInput]=useState('');
+  const[rules,setRules]=useState([]);
+  const[addingRule,setAddingRule]=useState(false);
+  const[ruleForm,setRuleForm]=useState({name:'',type:'consistency',value:'',description:''});
+  const[editRuleId,setEditRuleId]=useState(null);
+  const[editRuleVal,setEditRuleVal]=useState('');
   const[modal,setModal]=useState(null);
   const[importModal,setImportModal]=useState(false);
   const[form,setForm]=useState({pnl:'',note:''});
@@ -724,7 +756,7 @@ function Dashboard({syncCode,onLogout}){
   const did=useRef(null);
 
   useEffect(()=>{let un;(async()=>{const id=await hashCode(syncCode);did.current=id;
-    un=db.collection('journals').doc(id).onSnapshot(sn=>{if(sn.exists){const d=sn.data();setTrades(d.trades||{});if(d.startingBalance!==undefined)setStartBal(d.startingBalance);if(d.goal)setGoal(d.goal)}setSs('live')},
+    un=db.collection('journals').doc(id).onSnapshot(sn=>{if(sn.exists){const d=sn.data();setTrades(d.trades||{});if(d.startingBalance!==undefined)setStartBal(d.startingBalance);if(d.goal)setGoal(d.goal);if(d.rules)setRules(d.rules)}setSs('live')},
     e=>{console.error(e);setSs('offline');try{setTrades(JSON.parse(localStorage.getItem('pnl_local'))||{})}catch{}});
   })();return()=>{if(un)un()}},[syncCode]);
 
@@ -736,6 +768,9 @@ function Dashboard({syncCode,onLogout}){
 
   const saveGoal=useCallback(async g=>{setGoal(g);setSs('saving');
     try{await db.collection('journals').doc(did.current).set({goal:g||null},{merge:true})}catch(e){console.error(e);setSs('offline')}},[]);
+
+  const saveRules=useCallback(async r=>{setRules(r);setSs('saving');
+    try{await db.collection('journals').doc(did.current).set({rules:r},{merge:true})}catch(e){console.error(e);setSs('offline')}},[]);
 
   const pv=()=>{if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1)};
   const nx=()=>{if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1)};
@@ -1197,7 +1232,186 @@ function Dashboard({syncCode,onLogout}){
       ]),
     ]),
 
-    // Day modal
+    // Prop Firm Restrictions
+    h('div',{className:'rules-section',key:'rules'},[
+      h('div',{className:'rules-header',key:'hdr'},[
+        h('div',{key:'left'},[
+          h('div',{className:'rules-title',key:'t'},'PROP FIRM RULES'),
+        ]),
+        h('button',{className:'goal-edit-btn',key:'add',onClick:()=>setAddingRule(!addingRule)},addingRule?'Cancel':'+ Add Rule'),
+      ]),
+
+      // Add rule form
+      addingRule&&h('div',{className:'add-rule-form',key:'form'},[
+        h('div',{className:'section-label',key:'pl'},'PRESETS'),
+        h('div',{className:'preset-row',key:'presets'},[
+          h('button',{className:'preset-chip',key:'c50',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'50% Consistency Rule',type:'consistency',value:50,
+              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'50% Consistency'),
+          h('button',{className:'preset-chip',key:'c40',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'40% Consistency Rule',type:'consistency',value:40,
+              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'40% Consistency'),
+          h('button',{className:'preset-chip',key:'c30',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'30% Consistency Rule',type:'consistency',value:30,
+              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'30% Consistency'),
+          h('button',{className:'preset-chip',key:'mdl',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Max Daily Loss',type:'max_daily_loss',value:2000,
+              description:'Maximum allowed loss in a single day'}]);setAddingRule(false)}},'Max Daily Loss'),
+          h('button',{className:'preset-chip',key:'mdd',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Max Drawdown',type:'max_drawdown',value:4000,
+              description:'Maximum drawdown from starting balance'}]);setAddingRule(false)}},'Max Drawdown'),
+          h('button',{className:'preset-chip',key:'tdd',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Trailing Drawdown',type:'trailing_drawdown',value:3000,
+              description:'Maximum drawdown from peak balance'}]);setAddingRule(false)}},'Trailing Drawdown'),
+          h('button',{className:'preset-chip',key:'mtd',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Min Trading Days',type:'min_days',value:10,
+              description:'Minimum number of trading days required per month'}]);setAddingRule(false)}},'Min Trading Days'),
+          h('button',{className:'preset-chip',key:'mpt',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Max Position Time',type:'custom',value:0,
+              description:'No holding positions overnight'}]);setAddingRule(false)}},'No Overnight'),
+        ]),
+
+        h('div',{className:'section-label',key:'cl',style:{marginTop:10}},'CUSTOM RULE'),
+        h('div',{className:'form-row',key:'r1'},[
+          h('div',{className:'form-field',key:'name'},[
+            h('div',{className:'form-label',key:'l'},'Rule name'),
+            h('input',{className:'form-input',value:ruleForm.name,placeholder:'e.g. Max Daily Loss',
+              onChange:e=>setRuleForm(f=>({...f,name:e.target.value})),key:'i'}),
+          ]),
+          h('div',{className:'form-field',key:'val',style:{maxWidth:120}},[
+            h('div',{className:'form-label',key:'l'},'Threshold'),
+            h('input',{className:'form-input',type:'number',value:ruleForm.value,placeholder:'e.g. 2000',
+              onChange:e=>setRuleForm(f=>({...f,value:e.target.value})),key:'i'}),
+          ]),
+        ]),
+        h('div',{style:{marginBottom:8},key:'r2'},[
+          h('div',{className:'form-label',key:'l'},'Type'),
+          h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:4},key:'types'},[
+            ['consistency','Consistency %'],['max_daily_loss','Max Daily Loss ($)'],
+            ['max_drawdown','Max Drawdown ($)'],['trailing_drawdown','Trailing Drawdown ($)'],
+            ['min_days','Min Trading Days'],['custom','Custom / Manual'],
+          ].map(([k,label])=>h('button',{key:k,className:`preset-chip ${ruleForm.type===k?'active':''}`,
+            style:ruleForm.type===k?{background:'rgba(99,102,241,0.25)',borderColor:'rgba(99,102,241,0.5)'}:{},
+            onClick:()=>setRuleForm(f=>({...f,type:k}))},label))),
+        ]),
+        h('div',{style:{marginBottom:8},key:'r3'},[
+          h('div',{className:'form-label',key:'l'},'Description (optional)'),
+          h('input',{className:'form-input',value:ruleForm.description,placeholder:'What this rule means...',
+            onChange:e=>setRuleForm(f=>({...f,description:e.target.value})),key:'i'}),
+        ]),
+        h('div',{className:'btn-row',key:'btns'},[
+          h('button',{className:'btn-submit',key:'s',disabled:!ruleForm.name||!ruleForm.value,onClick:()=>{
+            const v=parseFloat(ruleForm.value);if(isNaN(v))return;
+            saveRules([...rules,{id:Date.now(),name:ruleForm.name,type:ruleForm.type,value:v,description:ruleForm.description}]);
+            setRuleForm({name:'',type:'consistency',value:'',description:''});setAddingRule(false);
+          }},'Add Rule'),
+        ]),
+      ]),
+
+      // Rules list with live evaluation
+      rules.length===0&&!addingRule&&h('div',{key:'empty',style:{fontSize:11,color:'#475569',textAlign:'center',padding:'12px 0'}},
+        'No rules configured. Add prop firm restrictions to track compliance.'),
+
+      rules.length>0&&h('div',{key:'list',style:{marginTop:addingRule?10:0}},
+        rules.map((rule,ri)=>{
+          // Evaluate rule
+          let status='neutral',statusText='—',detail='',pct=0;
+
+          if(rule.type==='consistency'){
+            // Best day P&L as % of total monthly profit
+            const profitDays=[];
+            for(let d=1;d<=nd;d++){const s=dS(d);if(s.pnl>0)profitDays.push(s.pnl)}
+            const totalProfit=profitDays.reduce((s,v)=>s+v,0);
+            const bestDayProfit=profitDays.length>0?Math.max(...profitDays):0;
+            if(totalProfit>0&&profitDays.length>0){
+              const bestPct=(bestDayProfit/totalProfit)*100;
+              pct=bestPct;
+              if(bestPct<=rule.value){status='pass';statusText='PASS'}
+              else if(bestPct<=rule.value*1.1){status='warn';statusText='CLOSE'}
+              else{status='fail';statusText='FAIL'}
+              detail=`Best day: ${fmt(bestDayProfit)} = ${bestPct.toFixed(1)}% of ${fmt(totalProfit)} profit (limit: ${rule.value}%)`;
+            }else{
+              detail=totalProfit<=0?'No profit yet this month':'No trading data';
+            }
+          }else if(rule.type==='max_daily_loss'){
+            let worstDay=0;
+            for(let d=1;d<=nd;d++){const s=dS(d);if(s.pnl<worstDay)worstDay=s.pnl}
+            const absWorst=Math.abs(worstDay);
+            pct=rule.value>0?(absWorst/rule.value)*100:0;
+            if(absWorst===0){status='pass';statusText='PASS';detail='No losing days'}
+            else if(absWorst<=rule.value){status='pass';statusText='PASS';detail=`Worst day: ${fmt(worstDay)} (limit: ${fmt(-rule.value)})`}
+            else if(absWorst<=rule.value*1.1){status='warn';statusText='CLOSE';detail=`Worst day: ${fmt(worstDay)} — approaching limit of ${fmt(-rule.value)}`}
+            else{status='fail';statusText='BREACH';detail=`Worst day: ${fmt(worstDay)} exceeded limit of ${fmt(-rule.value)}`}
+          }else if(rule.type==='max_drawdown'){
+            // Drawdown from starting balance
+            const dd=startBal>0?startBal-currentBal:0;
+            pct=rule.value>0?(Math.max(0,dd)/rule.value)*100:0;
+            if(dd<=0){status='pass';statusText='PASS';detail='No drawdown — above starting balance'}
+            else if(dd<=rule.value){status=dd>rule.value*0.8?'warn':'pass';statusText=dd>rule.value*0.8?'CLOSE':'PASS';
+              detail=`Drawdown: ${fmt(-dd)} of ${fmt(-rule.value)} limit (${pct.toFixed(1)}%)`}
+            else{status='fail';statusText='BREACH';detail=`Drawdown: ${fmt(-dd)} exceeded ${fmt(-rule.value)} limit`}
+          }else if(rule.type==='trailing_drawdown'){
+            // Drawdown from peak balance
+            let peak=startBal;
+            for(const k of allDates){
+              const dayPnl=(trades[k]||[]).reduce((s,x)=>s+x.pnl,0);
+              peak=Math.max(peak,startBal+allDates.filter(d=>d<=k).reduce((s,d)=>{
+                return s+(trades[d]||[]).reduce((a,x)=>a+x.pnl,0)},0));
+            }
+            const dd=peak-currentBal;
+            pct=rule.value>0?(Math.max(0,dd)/rule.value)*100:0;
+            if(dd<=0){status='pass';statusText='PASS';detail=`At peak balance: ${fmt(currentBal)}`}
+            else if(dd<=rule.value){status=dd>rule.value*0.8?'warn':'pass';statusText=dd>rule.value*0.8?'CLOSE':'PASS';
+              detail=`${fmt(-dd)} from peak ${fmt(peak)} (limit: ${fmt(-rule.value)})`}
+            else{status='fail';statusText='BREACH';detail=`${fmt(-dd)} from peak ${fmt(peak)} — exceeded ${fmt(-rule.value)} limit`}
+          }else if(rule.type==='min_days'){
+            let tradingDaysCount=0;
+            for(let d=1;d<=nd;d++){const s=dS(d);if(s.total>0)tradingDaysCount++}
+            const todayDate=now.getDate();
+            const daysInMonth=nd;
+            pct=(tradingDaysCount/rule.value)*100;
+            if(tradingDaysCount>=rule.value){status='pass';statusText='PASS'}
+            else if(todayDate<daysInMonth){status='neutral';statusText=`${tradingDaysCount}/${rule.value}`}
+            else{status='fail';statusText='FAIL'}
+            detail=`${tradingDaysCount} trading days this month (need ${rule.value})`;
+          }else{
+            // Custom — manual tracking, just show the rule
+            detail=rule.description||'Manual rule — track compliance yourself';
+          }
+
+          return h('div',{className:`rule-card ${status}`,key:'r'+rule.id},[
+            h('div',{className:'rule-top',key:'top'},[
+              h('div',{style:{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0},key:'left'},[
+                h('span',{className:'rule-name',key:'n'},rule.name),
+                status!=='neutral'&&h('span',{className:`rule-status ${status}`,key:'s'},statusText),
+              ]),
+              h('div',{className:'rule-actions',key:'act'},[
+                h('button',{className:'rule-del',key:'e',onClick:()=>{setEditRuleId(editRuleId===rule.id?null:rule.id);setEditRuleVal(String(rule.value))},
+                  title:'Edit threshold',style:{color:'#64748b'}},'✎'),
+                h('button',{className:'rule-del',key:'d',onClick:()=>saveRules(rules.filter((_,i)=>i!==ri)),title:'Remove rule'},'✕'),
+              ]),
+            ]),
+            editRuleId===rule.id&&h('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:6},key:'edit'},[
+              h('span',{style:{fontSize:10,color:'#64748b'},key:'l'},'Threshold:'),
+              h('input',{className:'form-input',type:'number',value:editRuleVal,
+                onChange:e=>setEditRuleVal(e.target.value),
+                style:{flex:1,padding:'4px 8px',fontSize:12,maxWidth:120},key:'i'}),
+              h('button',{className:'btn-submit',key:'s',style:{padding:'4px 12px',fontSize:10},onClick:()=>{
+                const v=parseFloat(editRuleVal);if(isNaN(v))return;
+                const updated=rules.map((r,i)=>i===ri?{...r,value:v}:r);
+                saveRules(updated);setEditRuleId(null);
+              }},'Save'),
+            ]),
+            detail&&h('div',{className:'rule-detail',key:'det'},detail),
+            pct>0&&rule.type!=='min_days'&&h('div',{className:'rule-progress',key:'bar'},
+              h('div',{className:'rule-progress-bar',style:{
+                width:`${Math.min(100,pct)}%`,
+                background:status==='pass'?'#4ade80':status==='warn'?'#facc15':'#f87171'
+              }})),
+          ]);
+        })
+      ),
+    ]),
     modal&&h('div',{className:'modal-overlay',key:'modal',onClick:()=>setModal(null)},h('div',{className:'modal-box',onClick:e=>e.stopPropagation()},[
       h('div',{className:'modal-handle',key:'h'}),
       h('div',{className:'modal-header',key:'hdr'},[
