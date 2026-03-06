@@ -485,12 +485,20 @@ function SetupScreen({onConnect}){
 // ============================================================
 //  IMPORT MODAL
 // ============================================================
-function ImportModal({onClose,onImport}){
+function ImportModal({onClose,onImport,existingTrades}){
   const[source,setSource]=useState(null); // 'bovada' or 'tradovate'
   const[raw,setRaw]=useState('');
   const[parsed,setParsed]=useState(null);
   const[filters,setFilters]=useState({win:true,loss:true,placed:false,cashout:true,gameplay:true,futures:true});
   const fileRef=useRef(null);
+
+  // Check if an entry is a duplicate of existing trades
+  function isDuplicate(e){
+    const existing=existingTrades[e.dateKey]||[];
+    const prefix=[e.typeLabel,e.betType].filter(Boolean).join(' ');
+    const note=prefix+(e.note?' - '+e.note:'');
+    return existing.some(ex=>ex.pnl===e.pnl&&ex.note===note);
+  }
 
   const doParseBovada=()=>{
     const r=parseBovada(raw);
@@ -654,26 +662,40 @@ function ImportModal({onClose,onImport}){
           source==='bovada'&&h('button',{className:`filter-chip ${filters.gameplay?'active':''}`,onClick:()=>toggleFilter('gameplay'),key:'g'},'Casino'),
         ]),
 
-        h('div',{className:'import-summary',key:'summary'},[
-          h('span',{key:'c'},`${filtered.length} entries`),
-          h('span',{key:'p',style:{fontWeight:700,color:totalPnl>=0?'#4ade80':'#f87171'}},`Net: ${fmt(totalPnl)}`),
-        ]),
+        (()=>{
+          const newEntries=filtered.filter(e=>!isDuplicate(e));
+          const dupEntries=filtered.filter(e=>isDuplicate(e));
+          const newPnl=newEntries.reduce((s,e)=>s+e.pnl,0);
+          return [
+            h('div',{className:'import-summary',key:'summary'},[
+              h('span',{key:'c'},`${newEntries.length} new${dupEntries.length>0?`, ${dupEntries.length} duplicates`:''}`),
+              h('span',{key:'p',style:{fontWeight:700,color:newPnl>=0?'#4ade80':'#f87171'}},`Net: ${fmt(newPnl)}`),
+            ]),
 
-        h('div',{className:'import-preview',key:'list'},
-          sortedDates.map(dk2=>h('div',{className:'import-date-group',key:dk2},[
-            h('div',{className:'import-date-header',key:'h'},grouped[dk2].label+' ('+grouped[dk2].entries.length+' entries)'),
-            ...grouped[dk2].entries.map((e,i)=>h('div',{className:'import-entry',key:i},[
-              h('span',{className:`type-badge ${typeCls(e.type)}`,key:'t'},e.typeLabel),
-              h('span',{className:'import-desc',key:'d'},e.note),
-              h('span',{className:`import-pnl ${cls(e.pnl)}`,key:'p'},fmt(e.pnl)),
-            ]))
-          ]))
-        ),
+            h('div',{className:'import-preview',key:'list'},
+              sortedDates.map(dk2=>h('div',{className:'import-date-group',key:dk2},[
+                h('div',{className:'import-date-header',key:'h'},grouped[dk2].label+' ('+grouped[dk2].entries.length+' entries)'),
+                ...grouped[dk2].entries.map((e,i)=>{
+                  const dup=isDuplicate(e);
+                  return h('div',{className:'import-entry',key:i,style:dup?{opacity:0.35}:{}},[
+                    h('span',{className:`type-badge ${dup?'':typeCls(e.type)}`,key:'t',
+                      style:dup?{background:'rgba(255,255,255,0.05)',color:'#475569'}:{}},
+                      dup?'DUP':e.typeLabel),
+                    h('span',{className:'import-desc',key:'d'},e.note),
+                    h('span',{className:`import-pnl ${dup?'':cls(e.pnl)}`,key:'p',
+                      style:dup?{color:'#475569'}:{}},fmt(e.pnl)),
+                  ]);
+                })
+              ]))
+            ),
 
-        h('div',{className:'btn-row',key:'btns'},[
-          h('button',{className:'btn-submit',onClick:doImport,key:'i'},`Import ${filtered.length} Entries`),
-          h('button',{className:'btn-cancel',onClick:()=>{setParsed(null);setRaw('')},key:'b'},'Back'),
-        ]),
+            h('div',{className:'btn-row',key:'btns'},[
+              h('button',{className:'btn-submit',onClick:doImport,key:'i',disabled:newEntries.length===0},
+                newEntries.length>0?`Import ${newEntries.length} New Entries`:'All entries are duplicates'),
+              h('button',{className:'btn-cancel',onClick:()=>{setParsed(null);setRaw('')},key:'b'},'Back'),
+            ]),
+          ];
+        })(),
       ]),
     ])
   );
@@ -904,12 +926,20 @@ function Dashboard({syncCode,onLogout}){
 
   const handleImport=byDate=>{
     const up={...trades};
+    let added=0,skipped=0;
     Object.entries(byDate).forEach(([key,newTrades])=>{
       if(!up[key])up[key]=[];
-      up[key]=[...up[key],...newTrades];
+      const existing=up[key];
+      for(const nt of newTrades){
+        // Duplicate check: same pnl + same note = duplicate
+        const isDup=existing.some(ex=>ex.pnl===nt.pnl&&ex.note===nt.note);
+        if(isDup){skipped++}
+        else{existing.push(nt);added++}
+      }
     });
     persist(up);
     setImportModal(false);
+    if(skipped>0)setTimeout(()=>alert(`Imported ${added} trades, skipped ${skipped} duplicates.`),100);
   };
 
   const clearAllTrades=()=>{
@@ -1192,7 +1222,7 @@ function Dashboard({syncCode,onLogout}){
     ])),
 
     // Import modal
-    importModal&&h(ImportModal,{key:'import',onClose:()=>setImportModal(false),onImport:handleImport}),
+    importModal&&h(ImportModal,{key:'import',onClose:()=>setImportModal(false),onImport:handleImport,existingTrades:trades}),
   ]);
 }
 
