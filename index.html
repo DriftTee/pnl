@@ -745,7 +745,7 @@ function Dashboard({syncCode,onLogout}){
   const[offDayInput,setOffDayInput]=useState('');
   const[rules,setRules]=useState([]);
   const[addingRule,setAddingRule]=useState(false);
-  const[ruleForm,setRuleForm]=useState({name:'',type:'consistency',value:'',description:''});
+  const[ruleForm,setRuleForm]=useState({name:'',type:'consistency_payout',value:'',description:''});
   const[editRuleId,setEditRuleId]=useState(null);
   const[editRuleVal,setEditRuleVal]=useState('');
   const[modal,setModal]=useState(null);
@@ -1243,32 +1243,55 @@ function Dashboard({syncCode,onLogout}){
 
       // Add rule form
       addingRule&&h('div',{className:'add-rule-form',key:'form'},[
-        h('div',{className:'section-label',key:'pl'},'PRESETS'),
+
+        // Apex preset
+        h('div',{className:'section-label',key:'apex'},'APEX TRADER FUNDING'),
+        h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12},key:'apexPresets'},[
+          h('button',{className:'preset-chip',key:'apex50',style:{padding:'8px 14px',fontSize:10,background:'rgba(250,204,21,0.1)',borderColor:'rgba(250,204,21,0.3)',color:'#facc15'},
+            onClick:()=>{
+              const t=Date.now();
+              saveRules([...rules,
+                {id:t+1,name:'50% Consistency',type:'consistency_payout',value:50,
+                  description:'No single profitable day can be ≥50% of total profit since last payout'},
+                {id:t+2,name:'Qualifying Days (5 × $250)',type:'qualifying_days',value:250,minDays:5,
+                  description:'Need 5 trading days with ≥$250 net profit each before payout'},
+                {id:t+3,name:'Safety Net',type:'safety_net',value:2600,
+                  description:'Balance must stay above initial ($50K) + drawdown ($2,500) + $100 = $52,600 for payout eligibility. Lifetime requirement.'},
+                {id:t+4,name:'EOD Trailing Drawdown',type:'trailing_drawdown',value:2500,
+                  description:'EOD balance cannot drop $2,500 from peak. Threshold locks once it reaches initial + $100 ($50,100).'},
+                {id:t+5,name:'30% Negative PnL (MAE)',type:'mae_rule',value:30,
+                  description:'Open unrealized loss on any trade cannot exceed 30% of profit balance at start of day. If profit doubles safety net, limit increases to 50%.'},
+                {id:t+6,name:'Contract Scaling',type:'contract_scaling',value:52600,maxContracts:10,
+                  description:'Limited to 5 contracts until EOD balance reaches $52,600. Full 10 contracts after threshold.'},
+                {id:t+7,name:'No Hedging',type:'custom',value:0,
+                  description:'Cannot hold long and short positions simultaneously on same or correlated instrument.'},
+                {id:t+8,name:'Min Payout: $500',type:'min_payout',value:500,
+                  description:'Minimum payout request is $500. Balance must exceed safety net to request.'},
+              ]);setAddingRule(false);
+            }},'⚡ Apex EOD 50K — Load All Rules'),
+        ]),
+
+        // Generic presets
+        h('div',{className:'section-label',key:'pl',style:{marginTop:4}},'INDIVIDUAL RULES'),
         h('div',{className:'preset-row',key:'presets'},[
           h('button',{className:'preset-chip',key:'c50',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'50% Consistency Rule',type:'consistency',value:50,
-              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'50% Consistency'),
-          h('button',{className:'preset-chip',key:'c40',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'40% Consistency Rule',type:'consistency',value:40,
-              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'40% Consistency'),
+            saveRules([...rules,{id:Date.now(),name:'50% Consistency',type:'consistency_payout',value:50,
+              description:'No single day ≥50% of total profit since last payout'}]);setAddingRule(false)}},'50% Consistency'),
           h('button',{className:'preset-chip',key:'c30',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'30% Consistency Rule',type:'consistency',value:30,
-              description:'No single day P&L can exceed this % of total monthly profit'}]);setAddingRule(false)}},'30% Consistency'),
+            saveRules([...rules,{id:Date.now(),name:'30% Consistency',type:'consistency_payout',value:30,
+              description:'No single day ≥30% of total profit since last payout'}]);setAddingRule(false)}},'30% Consistency'),
+          h('button',{className:'preset-chip',key:'qd',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Qualifying Days',type:'qualifying_days',value:250,minDays:5,
+              description:'Need 5 days with ≥$250 profit each'}]);setAddingRule(false)}},'Qualifying Days'),
+          h('button',{className:'preset-chip',key:'tdd',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Trailing Drawdown',type:'trailing_drawdown',value:2500,
+              description:'Max drawdown from peak balance'}]);setAddingRule(false)}},'Trailing Drawdown'),
           h('button',{className:'preset-chip',key:'mdl',onClick:()=>{
             saveRules([...rules,{id:Date.now(),name:'Max Daily Loss',type:'max_daily_loss',value:2000,
-              description:'Maximum allowed loss in a single day'}]);setAddingRule(false)}},'Max Daily Loss'),
-          h('button',{className:'preset-chip',key:'mdd',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'Max Drawdown',type:'max_drawdown',value:4000,
-              description:'Maximum drawdown from starting balance'}]);setAddingRule(false)}},'Max Drawdown'),
-          h('button',{className:'preset-chip',key:'tdd',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'Trailing Drawdown',type:'trailing_drawdown',value:3000,
-              description:'Maximum drawdown from peak balance'}]);setAddingRule(false)}},'Trailing Drawdown'),
-          h('button',{className:'preset-chip',key:'mtd',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'Min Trading Days',type:'min_days',value:10,
-              description:'Minimum number of trading days required per month'}]);setAddingRule(false)}},'Min Trading Days'),
-          h('button',{className:'preset-chip',key:'mpt',onClick:()=>{
-            saveRules([...rules,{id:Date.now(),name:'Max Position Time',type:'custom',value:0,
-              description:'No holding positions overnight'}]);setAddingRule(false)}},'No Overnight'),
+              description:'Maximum loss in a single day'}]);setAddingRule(false)}},'Max Daily Loss'),
+          h('button',{className:'preset-chip',key:'sn',onClick:()=>{
+            saveRules([...rules,{id:Date.now(),name:'Safety Net',type:'safety_net',value:2600,
+              description:'Balance must stay above initial + drawdown + $100'}]);setAddingRule(false)}},'Safety Net'),
         ]),
 
         h('div',{className:'section-label',key:'cl',style:{marginTop:10}},'CUSTOM RULE'),
@@ -1287,8 +1310,9 @@ function Dashboard({syncCode,onLogout}){
         h('div',{style:{marginBottom:8},key:'r2'},[
           h('div',{className:'form-label',key:'l'},'Type'),
           h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:4},key:'types'},[
-            ['consistency','Consistency %'],['max_daily_loss','Max Daily Loss ($)'],
-            ['max_drawdown','Max Drawdown ($)'],['trailing_drawdown','Trailing Drawdown ($)'],
+            ['consistency_payout','Consistency %'],['qualifying_days','Qualifying Days'],
+            ['safety_net','Safety Net ($)'],['trailing_drawdown','Trailing Drawdown ($)'],
+            ['max_daily_loss','Max Daily Loss ($)'],['mae_rule','MAE % Rule'],
             ['min_days','Min Trading Days'],['custom','Custom / Manual'],
           ].map(([k,label])=>h('button',{key:k,className:`preset-chip ${ruleForm.type===k?'active':''}`,
             style:ruleForm.type===k?{background:'rgba(99,102,241,0.25)',borderColor:'rgba(99,102,241,0.5)'}:{},
@@ -1303,22 +1327,22 @@ function Dashboard({syncCode,onLogout}){
           h('button',{className:'btn-submit',key:'s',disabled:!ruleForm.name||!ruleForm.value,onClick:()=>{
             const v=parseFloat(ruleForm.value);if(isNaN(v))return;
             saveRules([...rules,{id:Date.now(),name:ruleForm.name,type:ruleForm.type,value:v,description:ruleForm.description}]);
-            setRuleForm({name:'',type:'consistency',value:'',description:''});setAddingRule(false);
+            setRuleForm({name:'',type:'consistency_payout',value:'',description:''});setAddingRule(false);
           }},'Add Rule'),
         ]),
       ]),
 
       // Rules list with live evaluation
       rules.length===0&&!addingRule&&h('div',{key:'empty',style:{fontSize:11,color:'#475569',textAlign:'center',padding:'12px 0'}},
-        'No rules configured. Add prop firm restrictions to track compliance.'),
+        'No rules configured. Tap "+ Add Rule" to load Apex EOD 50K preset or add custom rules.'),
 
       rules.length>0&&h('div',{key:'list',style:{marginTop:addingRule?10:0}},
         rules.map((rule,ri)=>{
-          // Evaluate rule
           let status='neutral',statusText='—',detail='',pct=0;
 
-          if(rule.type==='consistency'){
-            // Best day P&L as % of total monthly profit
+          if(rule.type==='consistency_payout'){
+            // Payout consistency: best profitable day as % of total profit since last payout
+            // Uses all profit since we don't track payout dates — user can clear after payout
             const profitDays=[];
             for(let d=1;d<=nd;d++){const s=dS(d);if(s.pnl>0)profitDays.push(s.pnl)}
             const totalProfit=profitDays.reduce((s,v)=>s+v,0);
@@ -1326,56 +1350,142 @@ function Dashboard({syncCode,onLogout}){
             if(totalProfit>0&&profitDays.length>0){
               const bestPct=(bestDayProfit/totalProfit)*100;
               pct=bestPct;
-              if(bestPct<=rule.value){status='pass';statusText='PASS'}
-              else if(bestPct<=rule.value*1.1){status='warn';statusText='CLOSE'}
+              if(bestPct<rule.value){status='pass';statusText='PASS'}
               else{status='fail';statusText='FAIL'}
-              detail=`Best day: ${fmt(bestDayProfit)} = ${bestPct.toFixed(1)}% of ${fmt(totalProfit)} profit (limit: ${rule.value}%)`;
-            }else{
-              detail=totalProfit<=0?'No profit yet this month':'No trading data';
+              detail=`Best day: ${fmt(bestDayProfit)} = ${bestPct.toFixed(1)}% of ${fmt(totalProfit)} total profit (must be <${rule.value}%)`;
+            }else{detail='No profitable days yet — keep trading to build consistency'}
+
+          }else if(rule.type==='qualifying_days'){
+            const minProfit=rule.value;
+            const minDays=rule.minDays||5;
+            let qualDays=0;
+            const qualList=[];
+            for(let d=1;d<=nd;d++){
+              const s=dS(d);
+              if(s.pnl>=minProfit){qualDays++;qualList.push(d)}
             }
+            pct=(qualDays/minDays)*100;
+            if(qualDays>=minDays){status='pass';statusText=`${qualDays}/${minDays} ✓`}
+            else{status='neutral';statusText=`${qualDays}/${minDays}`}
+            detail=`${qualDays} qualifying days (≥${fmt(minProfit)} profit each). Need ${minDays}.`;
+            if(qualList.length>0&&qualList.length<8)detail+=` Days: ${qualList.join(', ')}`;
+
+          }else if(rule.type==='safety_net'){
+            // Safety net = initial balance + drawdown + $100
+            // For 50K: $50,000 + $2,500 + $100 = $52,600
+            const safetyThreshold=startBal+rule.value;
+            const aboveSafety=currentBal-safetyThreshold;
+            if(currentBal>=safetyThreshold){
+              status='pass';statusText='ABOVE';
+              detail=`Balance: ${fmt(currentBal)} is ${fmt(aboveSafety)} above safety net of ${fmt(safetyThreshold)}`;
+              pct=0;
+            }else{
+              const profitBal=currentBal-startBal;
+              if(profitBal>0){status='warn';statusText='BELOW NET'}
+              else{status='fail';statusText='NO PROFIT'}
+              detail=`Need ${fmt(safetyThreshold)} for payout eligibility. Currently ${fmt(currentBal)} (${fmt(aboveSafety)} short)`;
+              pct=startBal>0?Math.max(0,((currentBal-startBal)/rule.value)*100):0;
+            }
+
+          }else if(rule.type==='trailing_drawdown'){
+            let peak=startBal;
+            let runningBal=startBal;
+            for(const k of allDates.sort()){
+              runningBal+=(trades[k]||[]).reduce((s,x)=>s+x.pnl,0);
+              if(runningBal>peak)peak=runningBal;
+            }
+            const dd=peak-currentBal;
+            const lockThreshold=startBal+100;
+            const isLocked=peak>=startBal+rule.value+100;
+            pct=rule.value>0?(Math.max(0,dd)/rule.value)*100:0;
+            if(isLocked){
+              status='pass';statusText='LOCKED';
+              detail=`Threshold locked at ${fmt(lockThreshold)}. Peak: ${fmt(peak)}. Drawdown no longer trails.`;pct=0;
+            }else if(dd<=0){
+              status='pass';statusText='PASS';
+              detail=`At peak: ${fmt(currentBal)}. Threshold: ${fmt(peak-rule.value)} (trails ${fmt(rule.value)} behind peak)`;
+            }else if(dd<rule.value){
+              status=dd>rule.value*0.7?'warn':'pass';
+              statusText=dd>rule.value*0.7?'CLOSE':'PASS';
+              detail=`${fmt(dd)} drawdown from peak ${fmt(peak)}. Threshold: ${fmt(peak-rule.value)} (${pct.toFixed(0)}% used)`;
+            }else{
+              status='fail';statusText='BREACH';
+              detail=`Drawdown ${fmt(dd)} exceeded ${fmt(rule.value)} limit. Account would be closed.`;
+            }
+
+          }else if(rule.type==='mae_rule'){
+            // 30% MAE rule — we can't track intraday unrealized PnL, so show the current limits
+            const profitBal=currentBal-startBal;
+            const safetyNet=2600; // for 50K
+            const baseForCalc=profitBal>0?profitBal:rule.value/100*safetyNet;
+            let maxOpenLoss,pctUsed;
+            if(profitBal>=safetyNet*2){
+              // Doubled safety net — can use 50%
+              maxOpenLoss=profitBal*0.5;
+              detail=`Profit doubled safety net. Max open loss: ${fmt(maxOpenLoss)} (50% of ${fmt(profitBal)} profit)`;
+            }else if(profitBal>0){
+              maxOpenLoss=profitBal*(rule.value/100);
+              detail=`Max open loss per trade: ${fmt(maxOpenLoss)} (${rule.value}% of ${fmt(profitBal)} profit)`;
+            }else{
+              maxOpenLoss=safetyNet*(rule.value/100);
+              detail=`No profit yet. Max open loss: ${fmt(maxOpenLoss)} (${rule.value}% of ${fmt(safetyNet)} threshold)`;
+            }
+            status='neutral';statusText=fmt(maxOpenLoss);
+            detail+=' — Track this live in Tradovate/Rithmic';
+
+          }else if(rule.type==='contract_scaling'){
+            const threshold=rule.value;
+            const maxC=rule.maxContracts||10;
+            const halfC=Math.floor(maxC/2);
+            if(currentBal>=threshold){
+              status='pass';statusText=`${maxC} MAX`;
+              detail=`Threshold reached! Full ${maxC} contracts unlocked. Balance: ${fmt(currentBal)}`;
+            }else{
+              status='warn';statusText=`${halfC} MAX`;
+              const needed=threshold-currentBal;
+              detail=`Limited to ${halfC} contracts. Need ${fmt(needed)} more to reach ${fmt(threshold)} for full ${maxC}`;
+              pct=startBal>0?((currentBal-startBal)/(threshold-startBal))*100:0;
+            }
+
+          }else if(rule.type==='min_payout'){
+            const safetyThreshold=startBal+2600;
+            const aboveSafety=currentBal-safetyThreshold;
+            const canRequest=aboveSafety>=0;
+            const maxPayout=canRequest?Math.max(0,aboveSafety+rule.value):0;
+            if(!canRequest){
+              status='fail';statusText='NOT ELIGIBLE';
+              detail=`Below safety net. Need ${fmt(safetyThreshold)} balance before requesting payout.`;
+            }else if(aboveSafety>=0){
+              status='pass';statusText='ELIGIBLE';
+              detail=`Can request: ${fmt(rule.value)} minimum, up to ~${fmt(maxPayout)}. Balance after must stay above ${fmt(safetyThreshold-rule.value)}.`;
+            }
+
           }else if(rule.type==='max_daily_loss'){
             let worstDay=0;
             for(let d=1;d<=nd;d++){const s=dS(d);if(s.pnl<worstDay)worstDay=s.pnl}
             const absWorst=Math.abs(worstDay);
             pct=rule.value>0?(absWorst/rule.value)*100:0;
-            if(absWorst===0){status='pass';statusText='PASS';detail='No losing days'}
+            if(absWorst===0){status='pass';statusText='PASS';detail='No losing days this month'}
             else if(absWorst<=rule.value){status='pass';statusText='PASS';detail=`Worst day: ${fmt(worstDay)} (limit: ${fmt(-rule.value)})`}
-            else if(absWorst<=rule.value*1.1){status='warn';statusText='CLOSE';detail=`Worst day: ${fmt(worstDay)} — approaching limit of ${fmt(-rule.value)}`}
             else{status='fail';statusText='BREACH';detail=`Worst day: ${fmt(worstDay)} exceeded limit of ${fmt(-rule.value)}`}
+
           }else if(rule.type==='max_drawdown'){
-            // Drawdown from starting balance
             const dd=startBal>0?startBal-currentBal:0;
             pct=rule.value>0?(Math.max(0,dd)/rule.value)*100:0;
             if(dd<=0){status='pass';statusText='PASS';detail='No drawdown — above starting balance'}
             else if(dd<=rule.value){status=dd>rule.value*0.8?'warn':'pass';statusText=dd>rule.value*0.8?'CLOSE':'PASS';
               detail=`Drawdown: ${fmt(-dd)} of ${fmt(-rule.value)} limit (${pct.toFixed(1)}%)`}
             else{status='fail';statusText='BREACH';detail=`Drawdown: ${fmt(-dd)} exceeded ${fmt(-rule.value)} limit`}
-          }else if(rule.type==='trailing_drawdown'){
-            // Drawdown from peak balance
-            let peak=startBal;
-            for(const k of allDates){
-              const dayPnl=(trades[k]||[]).reduce((s,x)=>s+x.pnl,0);
-              peak=Math.max(peak,startBal+allDates.filter(d=>d<=k).reduce((s,d)=>{
-                return s+(trades[d]||[]).reduce((a,x)=>a+x.pnl,0)},0));
-            }
-            const dd=peak-currentBal;
-            pct=rule.value>0?(Math.max(0,dd)/rule.value)*100:0;
-            if(dd<=0){status='pass';statusText='PASS';detail=`At peak balance: ${fmt(currentBal)}`}
-            else if(dd<=rule.value){status=dd>rule.value*0.8?'warn':'pass';statusText=dd>rule.value*0.8?'CLOSE':'PASS';
-              detail=`${fmt(-dd)} from peak ${fmt(peak)} (limit: ${fmt(-rule.value)})`}
-            else{status='fail';statusText='BREACH';detail=`${fmt(-dd)} from peak ${fmt(peak)} — exceeded ${fmt(-rule.value)} limit`}
+
           }else if(rule.type==='min_days'){
             let tradingDaysCount=0;
             for(let d=1;d<=nd;d++){const s=dS(d);if(s.total>0)tradingDaysCount++}
-            const todayDate=now.getDate();
-            const daysInMonth=nd;
             pct=(tradingDaysCount/rule.value)*100;
             if(tradingDaysCount>=rule.value){status='pass';statusText='PASS'}
-            else if(todayDate<daysInMonth){status='neutral';statusText=`${tradingDaysCount}/${rule.value}`}
-            else{status='fail';statusText='FAIL'}
+            else{status='neutral';statusText=`${tradingDaysCount}/${rule.value}`}
             detail=`${tradingDaysCount} trading days this month (need ${rule.value})`;
+
           }else{
-            // Custom — manual tracking, just show the rule
             detail=rule.description||'Manual rule — track compliance yourself';
           }
 
@@ -1384,6 +1494,8 @@ function Dashboard({syncCode,onLogout}){
               h('div',{style:{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0},key:'left'},[
                 h('span',{className:'rule-name',key:'n'},rule.name),
                 status!=='neutral'&&h('span',{className:`rule-status ${status}`,key:'s'},statusText),
+                status==='neutral'&&statusText!=='—'&&h('span',{className:'rule-status',key:'s',
+                  style:{background:'rgba(255,255,255,0.06)',color:'#94a3b8'}},statusText),
               ]),
               h('div',{className:'rule-actions',key:'act'},[
                 h('button',{className:'rule-del',key:'e',onClick:()=>{setEditRuleId(editRuleId===rule.id?null:rule.id);setEditRuleVal(String(rule.value))},
@@ -1403,9 +1515,9 @@ function Dashboard({syncCode,onLogout}){
               }},'Save'),
             ]),
             detail&&h('div',{className:'rule-detail',key:'det'},detail),
-            pct>0&&rule.type!=='min_days'&&h('div',{className:'rule-progress',key:'bar'},
+            pct>0&&!['mae_rule','contract_scaling','min_payout'].includes(rule.type)&&h('div',{className:'rule-progress',key:'bar'},
               h('div',{className:'rule-progress-bar',style:{
-                width:`${Math.min(100,pct)}%`,
+                width:`${Math.min(100,Math.abs(pct))}%`,
                 background:status==='pass'?'#4ade80':status==='warn'?'#facc15':'#f87171'
               }})),
           ]);
